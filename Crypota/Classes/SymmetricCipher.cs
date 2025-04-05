@@ -210,11 +210,11 @@ public class SymmetricCipher : ISymmetricCipher
                 if (_iv == null)
                     throw new ArgumentNullException(nameof(_iv), "Setup before Encryption or change cipher mode");
 
-                prev = await Task.Run(() => EncryptBlock(XorTwoParts(blocks[0], _iv)));
+                prev = EncryptBlock(XorTwoParts(blocks[0], _iv));
                 result.AddRange(prev);
                 foreach (var b in blocks.Skip(1))
                 {
-                    var encryptedBlock = await Task.Run(() => EncryptBlock(XorTwoParts(b, prev)));
+                    var encryptedBlock = EncryptBlock(XorTwoParts(b, prev));
                     result.AddRange(encryptedBlock);
                     prev = encryptedBlock;
                 }
@@ -226,12 +226,12 @@ public class SymmetricCipher : ISymmetricCipher
                 if (_iv == null)
                     throw new ArgumentNullException(nameof(_iv), "Setup before Encryption or change cipher mode");
 
-                prev = await Task.Run(() => EncryptBlock(_iv));
+                prev = EncryptBlock(_iv);
                 result.AddRange(XorTwoParts(prev, blocks[0]));
                 foreach (var b in blocks.Skip(1))
                 {
-                    var encryptedBlock = await Task.Run(() => EncryptBlock(prev));
-                    result.AddRange(await Task.Run(() => XorTwoParts(encryptedBlock, b)));
+                    var encryptedBlock = EncryptBlock(prev);
+                    result.AddRange(XorTwoParts(encryptedBlock, b));
                     prev = encryptedBlock;
                 }
 
@@ -241,11 +241,11 @@ public class SymmetricCipher : ISymmetricCipher
                 if (_iv == null)
                     throw new ArgumentNullException(nameof(_iv), "Setup before Encryption or change cipher mode");
 
-                prev = await Task.Run(() => XorTwoParts(EncryptBlock(_iv), blocks[0]));
+                prev = XorTwoParts(EncryptBlock(_iv), blocks[0]);
                 result.AddRange(prev);
                 foreach (var b in blocks.Skip(1))
                 {
-                    var encryptedBlock = await Task.Run(() => XorTwoParts(EncryptBlock(prev), b));
+                    var encryptedBlock = XorTwoParts(EncryptBlock(prev), b);
                     result.AddRange(encryptedBlock);
                     prev = encryptedBlock;
                 }
@@ -256,12 +256,11 @@ public class SymmetricCipher : ISymmetricCipher
                 if (_iv == null)
                     throw new ArgumentNullException(nameof(_iv), "Setup before Encryption or change cipher mode");
 
-                prev = await Task.Run(() => EncryptBlock(XorTwoParts(blocks[0], _iv)));
+                prev = EncryptBlock(XorTwoParts(blocks[0], _iv));
                 result.AddRange(prev);
                 for (int i = 1; i < blocks.Count; ++i)
                 {
-                    var encryptedBlock = await Task.Run(() =>
-                        EncryptBlock(XorTwoParts(XorTwoParts(blocks[i - 1], prev), blocks[i])));
+                    var encryptedBlock = EncryptBlock(XorTwoParts(XorTwoParts(blocks[i - 1], prev), blocks[i]));
                     result.AddRange(encryptedBlock);
                     prev = encryptedBlock;
                 }
@@ -287,8 +286,8 @@ public class SymmetricCipher : ISymmetricCipher
                 
                 var encryptedBlocksDict = new ConcurrentDictionary<int, List<byte>>();
     
-                await Parallel.ForEachAsync(blocks.Select((b, i) => (Block: b, Index: i)), 
-                    async (item, ct) =>
+                Parallel.ForEach(blocks.Select((b, i) => (Block: b, Index: i)), 
+                     (item, ct) =>
                     {
                         BigInteger offset = item.Index * delta;
                         
@@ -300,7 +299,7 @@ public class SymmetricCipher : ISymmetricCipher
         
                         Array.Resize(ref counterBytes, BlockSize);
                         
-                        var encryptedCounter = await Task.Run(() => EncryptBlock(new List<byte>(counterBytes)), ct);
+                        var encryptedCounter = EncryptBlock(new List<byte>(counterBytes));
                         
                         var encryptedBlock = XorTwoParts(encryptedCounter, item.Block);
                         
@@ -349,7 +348,7 @@ public class SymmetricCipher : ISymmetricCipher
                 prev = _iv;
                 foreach (var b in blocks)
                 {
-                    var decrypted = await Task.Run(() => DecryptBlock(b));
+                    var decrypted = DecryptBlock(b);
                     var plain = XorTwoParts(decrypted, prev);
                     result.AddRange(plain);
                     prev = b;
@@ -360,11 +359,11 @@ public class SymmetricCipher : ISymmetricCipher
             case CipherMode.OFB:
                 if (_iv == null) throw new ArgumentNullException(nameof(_iv));
 
-                prev = await Task.Run(() => EncryptBlock(_iv));
+                prev = EncryptBlock(_iv);
                 result.AddRange(XorTwoParts(prev, blocks[0]));
                 foreach (var b in blocks.Skip(1))
                 {
-                    prev = await Task.Run(() => EncryptBlock(prev));
+                    prev = EncryptBlock(prev);
                     result.AddRange(XorTwoParts(prev, b));
                 }
 
@@ -376,7 +375,7 @@ public class SymmetricCipher : ISymmetricCipher
                 prev = _iv;
                 foreach (var b in blocks)
                 {
-                    var encrypted = await Task.Run(() => EncryptBlock(prev));
+                    var encrypted = EncryptBlock(prev);
                     var plain = XorTwoParts(encrypted, b);
                     result.AddRange(plain);
                     prev = b;
@@ -387,13 +386,13 @@ public class SymmetricCipher : ISymmetricCipher
             case CipherMode.PCBC:
                 if (_iv == null) throw new ArgumentNullException(nameof(_iv));
                 
-                var firstBlock = await Task.Run(() => DecryptBlock(blocks[0]));
+                var firstBlock = DecryptBlock(blocks[0]);
                 var prevPlain = XorTwoParts(firstBlock, _iv);
                 result.AddRange(prevPlain);
 
                 for (int i = 1; i < blocks.Count; i++)
                 {
-                    var decrypted = await Task.Run(() => DecryptBlock(blocks[i]));
+                    var decrypted = DecryptBlock(blocks[i]);
                     var plain = XorTwoParts(decrypted, XorTwoParts(blocks[i - 1], prevPlain));
                     result.AddRange(plain);
                     prevPlain = plain;
@@ -415,7 +414,7 @@ public class SymmetricCipher : ISymmetricCipher
 
                 var decryptedBlocksDict = new ConcurrentDictionary<int, List<byte>>();
 
-                await Parallel.ForEachAsync(blocks, async (block, ct) =>
+                Parallel.ForEach(blocks, (block, ct) =>
                 {
                     int blockIndex = blocks.IndexOf(block);
                     BigInteger offset = blockIndex * delta;
@@ -426,7 +425,7 @@ public class SymmetricCipher : ISymmetricCipher
 
                     Array.Resize(ref counterBytes, BlockSize);
 
-                    var encryptedCounter = await Task.Run(() => EncryptBlock(new List<byte> (counterBytes)), ct);
+                    var encryptedCounter = EncryptBlock(new List<byte> (counterBytes));
                     var decryptedBlock = XorTwoParts(encryptedCounter, block);
                     decryptedBlocksDict[blockIndex] = decryptedBlock;
                 });
