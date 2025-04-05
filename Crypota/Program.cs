@@ -33,7 +33,7 @@ class Program
                     Console.WriteLine($"Testing path with mode: {mode}, padding {padding} :" + path);
                     try
                     {
-                       // await TestDes(path);
+                        //await TestDes(path);
                         await TestDeal(path);
                     } 
                     catch (Exception e) { Console.WriteLine(e.Message); }
