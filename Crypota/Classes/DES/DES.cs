@@ -233,7 +233,7 @@ public class Des() :
         33,  1, 41,  9, 49, 17, 57, 25
     ];
 
-    public override List<byte> EncryptBlock(List<byte> block)
+    public override byte[] EncryptBlock(byte[] block)
     {
         var ip = PermuteBits(block, IP, 1);
         var encrypted = base.EncryptBlock(ip);
@@ -241,11 +241,15 @@ public class Des() :
         return pi;
     }
     
-    public override List<byte> DecryptBlock(List<byte> block)
+    public override byte[] DecryptBlock(byte[] block)
     {
         var ip = PermuteBits(block, IP, 1);
         var encrypted = base.DecryptBlock(ip);
         var pi = PermuteBits(encrypted, PI, 1);
         return pi;
     }
+    
+    /// L, R имеют размеры 32 бита
+    /// для ключа нужен отдельный split по 28 бит, циклические сдвиги на 1 и 2 для ключа
+    /// нормальный permute bits
 }
