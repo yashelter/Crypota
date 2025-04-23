@@ -8,15 +8,13 @@ public enum LastSwap
 }
 
 public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation,
-    uint rounds = 16, LastSwap swap = LastSwap.Swap)
+    uint rounds = 16)
     : ISymmetricCipher
 {
     public byte[]? Key { get; set; }
 
     private byte[] Network(RoundKey[] keys, byte[] block)
     {
-        // int rounds = keys.Count;
-        
         var (left, right) = SplitToTwoParts(block);
         
         for (int i = 0; i < rounds; i++)
@@ -27,7 +25,7 @@ public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformatio
             left = right;
             right = newLeft;
         }
-        return swap == LastSwap.Swap ? MergeFromTwoParts(right, left) : MergeFromTwoParts(left, right);
+        return MergeFromTwoParts(right, left);
     }
 
 
@@ -42,8 +40,8 @@ public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformatio
     {
         if (Key is null) throw new ArgumentException("You should set-up key before encryption");
         var keys = keyExtension.GetRoundKeys(Key);
-        keys.Reverse();
+        var rev = keys.Reverse().ToArray();
         
-        return Network(keys, block);
+        return Network(rev, block);
     }
 }

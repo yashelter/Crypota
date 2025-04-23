@@ -114,13 +114,13 @@ public class DesRoundTransformation : IEncryptionTransformation
         var eRi = PermuteBits(ri, ETable, 1);
         var bBlocks = XorTwoParts(ref eRi, roundKey.Key);
 
-        List<byte> bAffected = new List<byte>(4) { 0, 0, 0, 0 };
+        byte[] bAffected = [0, 0, 0, 0];
         int counter = 0;
         
         for (int i = 0; i < 8; ++i)
         {
-            (int x, int y) = GetSBlockIndexes(bBlocks, i * 6);
-            bAffected = SetNextFourBits(bAffected, SBoxes[i, x, y], counter);
+            var (x, y) = GetSBlockIndexes(bBlocks, i * 6);
+            bAffected = SetNextFourBits(ref bAffected, SBoxes[i, x, y], counter);
             counter += 4;
         }
        
@@ -172,36 +172,53 @@ public class DesKeyExtension : IKeyExtension
     #endregion
  
     
-    public List<RoundKey> GetRoundKeys(List<byte> key)
+    public RoundKey[] GetRoundKeys(byte[] key)
     {
-        if (key.Count != 8)
+        if (key.Length != 8)
             throw new ArgumentException("Key must be 8 bytes (64 bits [56]).");
         
         // TODO: add key check
         var permutedKey = PermuteBits(key, PC1, 1);
 
+        int c = 0, d;
 
-        var (c, d, size) = SplitToTwoParts(permutedKey); 
-       
-        
-        List<RoundKey> roundKeys = new List<RoundKey>();
+        for (int i = 0; i < 3; i++) {
+            c = (c << 8) | (permutedKey[i] & 0xFF);
+        }
+
+        c = (c << 4) | ((permutedKey[3] & 0xF0) >> 4);
+
+        d = (permutedKey[3] & 0x0F);
+        for (int i = 4; i < 7; i++) {
+            d = (d << 8) | (permutedKey[i] & 0xFF);
+        }
+
+        RoundKey[] roundKeys = new RoundKey[16];
         
         for (int i = 0; i < 16; i++)
         {
 
-            c = CycleShiftLeft(c, ShiftBits[i]); // 1 or 2
-            d = CycleShiftLeft(d, ShiftBits[i]); // 1 or 2
+            c = CycleLeftShift28(c, ShiftBits[i]); // 1 or 2
+            d = CycleLeftShift28(d, ShiftBits[i]); // 1 or 2
 
-            var cd = MergeTwoParts(c, d, size);
+            long combined = (((long) c) << 28) | (uint)(d & 0x0FFFFFFF);
+            byte[] cd = new byte[7];
+            for (int j = 0; j < 7; j++) {
+                cd[j] = (byte) ((combined >> ((6 - j) * 8)) & 0xFF);
+            }
+            
             var rKey = PermuteBits(cd, PC2, 1);
-            roundKeys.Add(new RoundKey()
+            roundKeys[i] = new RoundKey()
             {
                 Key = rKey,
-            });
+            };
         }
         return roundKeys;
     }
 
+    private static int CycleLeftShift28(int value, int shift) {
+        return ((value << shift) | (value >> (28 - shift))) & 0x0FFFFFFF;
+    }
 }
 
 public class Des() : 
@@ -248,8 +265,4 @@ public class Des() :
         var pi = PermuteBits(encrypted, PI, 1);
         return pi;
     }
-    
-    /// L, R имеют размеры 32 бита
-    /// для ключа нужен отдельный split по 28 бит, циклические сдвиги на 1 и 2 для ключа
-    /// нормальный permute bits
 }
