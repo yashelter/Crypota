@@ -17,16 +17,17 @@ public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformatio
     {
         // int rounds = keys.Count;
         
-        var (left, right, bitCnt) = SplitToTwoParts(block);
+        var (left, right) = SplitToTwoParts(block);
         
         for (int i = 0; i < rounds; i++)
         {
-            var newLeft = XorTwoParts(transformation.EncryptionTransformation(right, keys[i]), left);
+            var temp = transformation.EncryptionTransformation(right, keys[i]);
+            var newLeft = XorTwoParts(ref temp, left);
             
             left = right;
             right = newLeft;
         }
-        return swap == LastSwap.Swap ? MergeTwoParts(right, left, bitCnt) : MergeTwoParts(left, right, bitCnt);
+        return swap == LastSwap.Swap ? MergeFromTwoParts(right, left) : MergeFromTwoParts(left, right);
     }
 
 

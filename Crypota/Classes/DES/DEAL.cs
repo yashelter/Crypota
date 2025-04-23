@@ -1,4 +1,4 @@
-﻿namespace Crypota.Classes.DES;
+﻿/*namespace Crypota.Classes.DES;
 using static CryptoAlgorithms;
 
 public class Deal128EncryptionTransformation : IEncryptionTransformation
@@ -48,4 +48,4 @@ public class Deal128() :
     FeistelNetwork(new Deal128KeyExtension(), new Deal128EncryptionTransformation(), 6, LastSwap.NoSwap)
 {
 
-}
+}*/

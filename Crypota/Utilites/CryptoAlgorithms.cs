@@ -2,153 +2,123 @@
 
 public static class CryptoAlgorithms
 {
-    public static byte GetBitInArray(List<byte> value, int position)
-    {
-        int byteN = position >> 3;
-        int bitN = position % 8;
-
-        return (byte)GetBit(value[byteN], (byte) bitN);
-    }
-    
-    public static byte GetByteInArray(List<byte> value, int bitPosition)
-    {
-        int byteN = bitPosition >> 3;
-
-        return (byte)value[byteN];
-    }
-
-    /// <summary>
-    /// Вставка происходит либо в левые 4 бита, либо в правые
-    /// </summary>
-    /// <param name="array"></param>
-    /// <param name="value">Значение берётся из последних 4 битов</param>
-    /// <param name="bitStartPosition">Позиция начального бита в array, должна быть кратна 4</param>
-    /// <returns></returns>
-    public static List<byte> SetNextFourBits(List<byte> array, byte value, int bitStartPosition)
-    {
-        value &= 0x0F;
-        int byteN = bitStartPosition >> 3;
-        int bitN = bitStartPosition % 8;
-
-        if (bitN == 4)
-        {
-            array[byteN] = (byte) (array[byteN] | value);
-        }
-        else if (bitN == 0)
-        {
-            array[byteN] = (byte)((array[byteN] & 0x0F) | (value << 4));
-        }
-        else
-        {
-            throw new ArgumentException("Invalid bitPosition");
-        }
-
-        return array;
-    }
-
     public static void Swap<T>(ref T a, ref T b)
     {
         (a, b) = (b, a);
     }
     
-    /// <summary>
-    /// Если будет не совпадение индексов и размеров кинет исключение
-    /// </summary>
-    /// <param name="mas">Байты</param>
-    /// <param name="permutations"> В массиве лежат индексы из исходного, которые ставим на i-ую позицию</param>
-    private static List<byte> PermuteBitsNoConfig(List<byte> mas, List<int> permutations)
-    {
-        // TODO
-        throw new NotImplementedException();
-    }
+    
     
     public enum IndexingRules : uint{
         FromSmallestToBiggest = 0,
         FromBiggestToSmallest = 1,
     }
 
-    public static List<byte> PermuteBits(List<byte> sourceValue, List<int> rulesOfPermutations,
+
+    public static byte GetBitOnPositon(in byte[] array, int position)
+    {
+        int byteIndex = position / 8;
+        int bitIndex = 7 - (position % 8);
+        
+        return (byte) ((array[byteIndex] & (1 << bitIndex)) >> bitIndex);
+    }
+    
+    
+
+    public static byte[] PermuteBits(byte[] sourceValue, int[] rulesOfPermutations,
         int startBitNumber = 0, IndexingRules indexingRules = IndexingRules.FromBiggestToSmallest)
     {
-        // TODO
-        List<int> rules = new List<int>(rulesOfPermutations);
-        
-        if (startBitNumber != 0)
-        {
-            for (int i = 0; i < rules.Count; i++)
-            {
-                rules[i] -= startBitNumber;
-            }
-        }
+        int size = rulesOfPermutations.Length / 8 + (rulesOfPermutations.Length % 8 == 0 ? 0 : 1);
+        byte[] result = new byte[size];
 
-        if (indexingRules != IndexingRules.FromBiggestToSmallest)
+        int byteIndex = 0;
+        int bitIndex = 0;
+        
+        foreach (int position in rulesOfPermutations)
         {
-            for (int i = 0; i < rules.Count; i++)
+            if (indexingRules == IndexingRules.FromSmallestToBiggest)
             {
-               rules[i] = rulesOfPermutations.Count - 1 - rules[i];
+                int invesion = sourceValue.Length * 8 - 1 - position;
+                result[byteIndex] |= (byte) (GetBitOnPositon(sourceValue, invesion + startBitNumber) << (7 - bitIndex));
+
+            }
+            else
+            {
+                result[byteIndex] |= (byte) (GetBitOnPositon(sourceValue, position - startBitNumber) << (7 - bitIndex));
+
+            }
+  
+            ++bitIndex;
+            if (bitIndex == 8)
+            {
+                bitIndex = 0;
+                ++byteIndex;
             }
         }
-        return PermuteBitsNoConfig(sourceValue, rules);
+        
+        
+        return result;
     }
     
 
-    // bitsSize is total bits
-    public static (List<byte> left, List<byte> right, int bitsSize) SplitToTwoParts(List<byte> sourceValue)
+    public static (byte[] left, byte[] right) SplitToTwoParts(byte[] sourceValue)
     {
-        int bytesCount = sourceValue.Count >> 1;
-        int bitesCount = (sourceValue.Count << 2) - (bytesCount << 3); // it's 4 or 0
-
-        if (bitesCount != 4 && bitesCount != 0)
+        int bytesCount = sourceValue.Length / 2;
+        if (sourceValue.Length % 2 != 0)
         {
-            throw new NotSupportedException("Function was written wrong!");
+            throw new NotSupportedException("Not supported operation");
         }
 
-        var left = new List<byte>();
-        var right = new List<byte>();
-
-        int bitsSize = bitesCount + (bytesCount << 3);
+        var left = new byte[bytesCount];
+        var right = new byte[bytesCount];
+        
 
         for (int i = 0; i < bytesCount; i++)
         {
-            left.Add(sourceValue[i]);
+            left[i] = sourceValue[i];
+            right[i] = sourceValue[bytesCount + i];
         }
-
-        if (bitesCount > 0)
-        {
-            left.Add((byte)(GetLeftByteHalf(sourceValue[bytesCount]) << 4));
-            right.Add((byte)(GetRightByteHalf(sourceValue[bytesCount]) << 4));
-            int j = 0;
-            for (int i = bytesCount; i < sourceValue.Count - 1; ++i, ++j)
-            {
-                right[j] = (byte) (right[j] | GetLeftByteHalf(sourceValue[bytesCount + 1]));
-                right.Add((byte)(GetRightByteHalf(sourceValue[bytesCount + 1]) << 4));
-            }
-            //
-        }
-        else
-        {
-            for (int i = bytesCount; i < sourceValue.Count; i++)
-            {
-                right.Add(sourceValue[i]);
-            }
-
-        }
-
-        return (left, right, bitsSize);
+        
+        return (left, right);
     }
     
-    public static List<byte> XorTwoParts(List<byte> a, List<byte> b)
+    
+    public static byte[] MergeFromTwoParts(byte[] left, byte[] right)
     {
-        if (a.Count != b.Count)
+        if (left.Length != right.Length)
+        {
+            throw new NotSupportedException("Not supported operation");
+        }
+        byte[] result = new byte[left.Length + right.Length];
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            result[i] = left[i];
+            result[left.Length + i] = right[i];
+        }
+        return result;
+    }
+    
+    
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <returns>ref on array a</returns>
+    /// <exception cref="ArgumentException"></exception>
+    public static byte[] XorTwoParts(ref byte[] a, in byte[] b)
+    {
+        if (a.Length != b.Length)
         {
             throw new ArgumentException("The two arrays must have the same length.");
         }
-        List<byte> result = new List<byte>(a.Count);
         
-        for (int i = 0; i < a.Count; i++)
+        for (int i = 0; i < a.Length; i++)
         {
-            result.Add((byte) (a[i] ^ b[i]));
+            a[i] ^= b[i];
         }
-        return result;
+        return a;
     }
 }
