@@ -20,4 +20,10 @@
       <ProjectReference Include="..\Crypota\Crypota.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="Tests\Input\message.txt">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>
