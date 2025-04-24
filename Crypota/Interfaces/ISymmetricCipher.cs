@@ -3,9 +3,9 @@
 
 public interface ISymmetricCipher
 {
-    public List<byte>? Key { get; set; }
+    public byte[]? Key { get; set; }
     
-    public List<byte> EncryptBlock(List<byte> block);
+    public byte[] EncryptBlock(byte[] block);
     
-    public List<byte> DecryptBlock(List<byte> block);
+    public byte[] DecryptBlock(byte[] block);
 }

@@ -143,7 +143,6 @@ public static class Utilities
         {
             return BigInteger.Zero;
         }
-        
         while (a != 0)
         {
             while (a.IsEven)
@@ -155,20 +154,14 @@ public static class Utilities
                     t = -t;
                 }
             }
-
             (a, n) = (n, a);
-
             if (a % 4 == 3 && n% 4 == 3)
             {
                 t = -t;
             }
             a = a % n;
         }
-
-        if (n == BigInteger.One)
-        {
-            return t;
-        }
+        if (n == BigInteger.One)  {return t;  }
         return BigInteger.Zero;
     }
 }

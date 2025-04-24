@@ -2,10 +2,10 @@
 
 public class RoundKey
 {
-    public List<byte> Key = new List<byte>();
+    public byte[]? Key = null;
 }
 
 public interface IKeyExtension
-{
-    public List<RoundKey> GetRoundKeys(List<byte> key);
+{ 
+    public RoundKey[] GetRoundKeys(byte[] key);
 }

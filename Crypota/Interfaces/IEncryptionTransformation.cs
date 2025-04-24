@@ -5,5 +5,5 @@ using static Crypota.RoundKey;
 
 public interface IEncryptionTransformation
 {
-    public List<byte> EncryptionTransformation(List<byte> message, RoundKey roundKey);
+    public byte[] EncryptionTransformation(byte[] message, RoundKey roundKey);
 }

@@ -7,41 +7,41 @@ public enum LastSwap
     Swap = 1,
 }
 
-public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation, uint rounds = 16, LastSwap swap = LastSwap.Swap)
+public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation,
+    uint rounds = 16)
     : ISymmetricCipher
 {
-    public List<byte>? Key { get; set; }
+    public byte[]? Key { get; set; }
 
-    private List<byte> Network(List<RoundKey> keys, List<byte> block)
+    private byte[] Network(RoundKey[] keys, byte[] block)
     {
-        // int rounds = keys.Count;
-        
-        var (left, right, bitCnt) = SplitToTwoParts(block);
+        var (left, right) = SplitToTwoParts(block);
         
         for (int i = 0; i < rounds; i++)
         {
-            var newLeft = XorTwoParts(transformation.EncryptionTransformation(right, keys[i]), left);
+            var temp = transformation.EncryptionTransformation(right, keys[i]);
+            var newLeft = XorTwoParts(ref temp, left);
             
             left = right;
             right = newLeft;
         }
-        return swap == LastSwap.Swap ? MergeTwoParts(right, left, bitCnt) : MergeTwoParts(left, right, bitCnt);
+        return MergeFromTwoParts(right, left);
     }
 
 
-    public virtual List<byte> EncryptBlock(List<byte> block)
+    public virtual byte[] EncryptBlock(byte[] block)
     {
         if (Key is null) throw new ArgumentException("You should set-up key before encryption");
         
         return Network(keyExtension.GetRoundKeys(Key), block);
     }
 
-    public virtual List<byte> DecryptBlock(List<byte> block)
+    public virtual byte[] DecryptBlock(byte[] block)
     {
         if (Key is null) throw new ArgumentException("You should set-up key before encryption");
         var keys = keyExtension.GetRoundKeys(Key);
-        keys.Reverse();
+        var rev = keys.Reverse().ToArray();
         
-        return Network(keys, block);
+        return Network(rev, block);
     }
 }

@@ -3,7 +3,7 @@ using static Crypota.CryptoAlgorithms;
 
 public class DesRoundTransformation : IEncryptionTransformation
 {
-    private static readonly List<int> ETable =
+    private static readonly int[] ETable =
     [
         32,  1,  2,  3,  4,  5,  
         4,  5,  6,  7,  8,  9,  
@@ -74,7 +74,7 @@ public class DesRoundTransformation : IEncryptionTransformation
             { 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11 },
         }
     };
-    private static readonly List<int> PTable =
+    private static readonly int[] PTable =
     [
         16,  7, 20, 21, 
         29, 12, 28, 17, 
@@ -87,15 +87,15 @@ public class DesRoundTransformation : IEncryptionTransformation
     ];
     
 
-    private static (int, int) GetSBlockIndexes(List<byte> bArray, int startPos)
+    private static (int, int) GetSBlockIndexes(byte[] bArray, int startPos)
     {
-        int row = (GetBitInArray(bArray, startPos) << 1) | (GetBitInArray(bArray, startPos + 5));
+        int row = (GetBitOnPositon(bArray, startPos) << 1) | (GetBitOnPositon(bArray, startPos + 5));
 
         int col = 0;
         for (int i = 1; i < 5; i++)
         {
             col <<= 1;
-            col |= GetBitInArray(bArray, startPos + i);
+            col |= GetBitOnPositon(bArray, startPos + i);
 
         }
         
@@ -109,18 +109,18 @@ public class DesRoundTransformation : IEncryptionTransformation
     /// <param name="ri"></param>
     /// <param name="roundKey"></param>
     /// <returns></returns>
-    public List<byte> EncryptionTransformation(List<byte> ri, RoundKey roundKey) // function f
+    public byte[] EncryptionTransformation(byte[] ri, RoundKey roundKey) // function f
     {
         var eRi = PermuteBits(ri, ETable, 1);
-        var bBlocks = XorTwoParts(eRi, roundKey.Key);
+        var bBlocks = XorTwoParts(ref eRi, roundKey.Key);
 
-        List<byte> bAffected = new List<byte>(4) { 0, 0, 0, 0 };
+        byte[] bAffected = [0, 0, 0, 0];
         int counter = 0;
         
         for (int i = 0; i < 8; ++i)
         {
-            (int x, int y) = GetSBlockIndexes(bBlocks, i * 6);
-            bAffected = SetNextFourBits(bAffected, SBoxes[i, x, y], counter);
+            var (x, y) = GetSBlockIndexes(bBlocks, i * 6);
+            bAffected = SetNextFourBits(ref bAffected, SBoxes[i, x, y], counter);
             counter += 4;
         }
        
@@ -136,7 +136,7 @@ public class DesKeyExtension : IKeyExtension
     #region PrivateMethods
     
     // Таблица PC1 (Первоначальная перестановка ключа)
-    private static readonly List<int> PC1 =
+    private static readonly int[] PC1 =
     [
         57, 49, 41, 33, 25, 17,  9,
         1, 58, 50, 42, 34, 26, 18,
@@ -150,7 +150,7 @@ public class DesKeyExtension : IKeyExtension
     ];
 
     // Таблица PC2 (Сжатие ключа до 48 бит)
-    private static readonly  List<int> PC2 =
+    private static readonly int[] PC2 =
     [
         14, 17, 11, 24,  1,  5,
         3, 28, 15,  6, 21, 10,
@@ -163,7 +163,7 @@ public class DesKeyExtension : IKeyExtension
     ];
 
 
-    private static readonly List<int> ShiftBits = 
+    private static readonly int[]  ShiftBits = 
     [ 
      /* 1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16 */
         1,  1,  2,  2,  2,  2,  2,  2,  1,  2,  2,  2,  2,  2,  2,  1
@@ -172,43 +172,60 @@ public class DesKeyExtension : IKeyExtension
     #endregion
  
     
-    public List<RoundKey> GetRoundKeys(List<byte> key)
+    public RoundKey[] GetRoundKeys(byte[] key)
     {
-        if (key.Count != 8)
+        if (key.Length != 8)
             throw new ArgumentException("Key must be 8 bytes (64 bits [56]).");
         
         // TODO: add key check
         var permutedKey = PermuteBits(key, PC1, 1);
 
+        int c = 0, d;
 
-        var (c, d, size) = SplitToTwoParts(permutedKey); 
-       
-        
-        List<RoundKey> roundKeys = new List<RoundKey>();
+        for (int i = 0; i < 3; i++) {
+            c = (c << 8) | (permutedKey[i] & 0xFF);
+        }
+
+        c = (c << 4) | ((permutedKey[3] & 0xF0) >> 4);
+
+        d = (permutedKey[3] & 0x0F);
+        for (int i = 4; i < 7; i++) {
+            d = (d << 8) | (permutedKey[i] & 0xFF);
+        }
+
+        RoundKey[] roundKeys = new RoundKey[16];
         
         for (int i = 0; i < 16; i++)
         {
 
-            c = CycleShiftLeft(c, ShiftBits[i]); // 1 or 2
-            d = CycleShiftLeft(d, ShiftBits[i]); // 1 or 2
+            c = CycleLeftShift28(c, ShiftBits[i]); // 1 or 2
+            d = CycleLeftShift28(d, ShiftBits[i]); // 1 or 2
 
-            var cd = MergeTwoParts(c, d, size);
+            long combined = (((long) c) << 28) | (uint)(d & 0x0FFFFFFF);
+            byte[] cd = new byte[7];
+            for (int j = 0; j < 7; j++) {
+                cd[j] = (byte) ((combined >> ((6 - j) * 8)) & 0xFF);
+            }
+            
             var rKey = PermuteBits(cd, PC2, 1);
-            roundKeys.Add(new RoundKey()
+            roundKeys[i] = new RoundKey()
             {
                 Key = rKey,
-            });
+            };
         }
         return roundKeys;
     }
 
+    private static int CycleLeftShift28(int value, int shift) {
+        return ((value << shift) | (value >> (28 - shift))) & 0x0FFFFFFF;
+    }
 }
 
 public class Des() : 
     FeistelNetwork(new DesKeyExtension(), new DesRoundTransformation(), 16)
 {
 
-    private static readonly List<int> IP = 
+    private static readonly int[]  IP = 
     [
         58, 50, 42, 34, 26, 18, 10,  2, 
         60, 52, 44, 36, 28, 20, 12,  4, 
@@ -221,7 +238,7 @@ public class Des() :
     ];
 
 
-    private static readonly List<int> PI = 
+    private static readonly int[] PI = 
         [
         40,  8, 48, 16, 56, 24, 64, 32, 
         39,  7, 47, 15, 55, 23, 63, 31, 
@@ -233,7 +250,7 @@ public class Des() :
         33,  1, 41,  9, 49, 17, 57, 25
     ];
 
-    public override List<byte> EncryptBlock(List<byte> block)
+    public override byte[] EncryptBlock(byte[] block)
     {
         var ip = PermuteBits(block, IP, 1);
         var encrypted = base.EncryptBlock(ip);
@@ -241,7 +258,7 @@ public class Des() :
         return pi;
     }
     
-    public override List<byte> DecryptBlock(List<byte> block)
+    public override byte[] DecryptBlock(byte[] block)
     {
         var ip = PermuteBits(block, IP, 1);
         var encrypted = base.DecryptBlock(ip);
