@@ -1,25 +1,20 @@
-﻿using System.Numerics;
+﻿namespace Crypota.RSA.Examples;
+
+using System.Numerics;
 using System.Security.Cryptography;
 using Crypota.PrimalityTests;
 using static Crypota.Utilities;
 
-namespace Crypota.RSA;
 
-public class RsaService(RsaService.PrimaryTestOption primaryTestOption, double probability, int bitLength)
+/// <summary>
+/// Class not for usage for encrypting, made be weak for attacks
+/// </summary>
+/// <param name="primaryTestOption"></param>
+/// <param name="probability"></param>
+/// <param name="bitLength"></param>
+public class WeakRsaService(WeakRsaService.PrimaryTestOption primaryTestOption, double probability, int bitLength)
 {
-    private (BigInteger e, BigInteger d, BigInteger n) KeyPair { get; set; }
-
-    public (BigInteger e, BigInteger n) GetPublicKey()
-    {
-        return (KeyPair.e, KeyPair.n);
-    }
-    
-    public (BigInteger d, BigInteger n) GetPrivateKey()
-    {
-        return (KeyPair.d, KeyPair.n);
-    }
-    
-    
+    public (BigInteger e, BigInteger d, BigInteger n, BigInteger phi) KeyPair { get; private set; }
     public enum PrimaryTestOption
     {
         FermatTest = 0,
@@ -97,33 +92,37 @@ public class RsaService(RsaService.PrimaryTestOption primaryTestOption, double p
             
             return candidate;
         }
+        
+        private BigInteger GenerateClosePrimary(BigInteger p)
+        {
+            BigInteger candidate = p + 2;
+            while (true)
+            {
+                if (candidate.IsEven)
+                    candidate += 1;
+                if (_primaryTest.PrimaryTest(candidate, _probability) == Probability.PossiblePrimal)
+                    return candidate;
+                candidate += 2;
+            }
+        }
 
-        public (BigInteger e, BigInteger d, BigInteger N) GenerateKeyPair()
+        public (BigInteger e, BigInteger d, BigInteger N, BigInteger phi) GenerateKeyPair()
         {
             BigInteger p, q, N;
-            BigInteger d, y = BigInteger.Zero;
-            BigInteger minDiff = BigInteger.One << (_bitLength / 2 - 100);
-            do
-            {
-                p = GeneratePrimaryNumber();
-                q = GeneratePrimaryNumber();
-                if (BigInteger.Abs(p - q) < minDiff)
-                {
-                    N = BigInteger.One;
-                    d = BigInteger.Zero;
-                    continue;
-                }
+            BigInteger d = 17, y = BigInteger.Zero, phi = BigInteger.Zero;
+            BigInteger e;
 
-                N = q * p;
-                var phi = (p - BigInteger.One) * (q - BigInteger.One);
-                d = BigInteger.Zero;
-                
-                Gcd(phi, PublicExponent, ref y, ref d);
-                d = (d % phi + phi) % phi;
-                
-            } while (81 * BigInteger.Pow(d, 4) < N);
+            p = GeneratePrimaryNumber();
+            q = GenerateClosePrimary(p);
 
-            return (PublicExponent, d, N);
+            N = q * p;
+            phi = (p - BigInteger.One) * (q - BigInteger.One);
+            e = BigInteger.Zero;
+
+            Gcd(phi, d, ref y, ref e);
+            e = (e % phi + phi) % phi;
+            
+            return (e, d, N, phi);
         }
     }
     
@@ -141,7 +140,7 @@ public class RsaService(RsaService.PrimaryTestOption primaryTestOption, double p
         return BinaryPowerByMod(c, d, n).ToByteArray(isUnsigned: true, isBigEndian: true);
     }
 
-    public RsaService GenerateKeyPair()
+    public WeakRsaService GenerateKeyPair()
     {
         KeyPair = _keyGen.GenerateKeyPair();
         return this;

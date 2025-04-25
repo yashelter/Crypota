@@ -164,4 +164,26 @@ public static class Utilities
         if (n == BigInteger.One)  {return t;  }
         return BigInteger.Zero;
     }
+    
+    // метод Ньютона-Рафсона
+    public static BigInteger Sqrt(BigInteger n)
+    {
+        if (n < 0)
+            throw new ArgumentException("Отрицательное число не имеет действительного квадратного корня.");
+        
+        if (n == 0 || n == 1)
+            return n;
+
+        BigInteger x = n;
+        BigInteger y = (x + 1) / 2;
+        
+        while (y < x)
+        {
+            x = y;
+            y = (x + n / x) / 2;
+        }
+        
+        return x;
+    }
+    
 }

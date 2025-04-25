@@ -114,7 +114,7 @@ public sealed class RsaTests
     [DataRow("54")]
     [DataRow("80808080801")]
     [DataRow("8080800000000000000000080801")]
-    [DataRow("561")] // can be, can not be. As says luck
+    [DataRow("561")] // Can be, cannot be. As says luck
     
     public void TestPrimaryTestNegative(string n)
     {
