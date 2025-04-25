@@ -17,8 +17,8 @@ public class SymmetricCipher : ISymmetricCipher
 {
 
     private byte[]? _key;
-    public required int BlockSize { get; set; }
-    public required int KeySize { get; set; }
+    public int BlockSize { get;  }
+    public int KeySize { get;  }
 
     private readonly byte[]? _iv;
     private readonly CipherMode _cipherMode;
@@ -76,7 +76,8 @@ public class SymmetricCipher : ISymmetricCipher
         {
             Array.Reverse(_iv);
         }
-            
+        BlockSize = implementation.BlockSize;
+        KeySize = implementation.KeySize;
         
         _implementation = implementation;
         Key = key;
@@ -97,6 +98,7 @@ public class SymmetricCipher : ISymmetricCipher
     /// <returns>Новый массив байт с добавленными отступами.</returns>
     private byte[] ApplyPadding(byte[] inputData)
     {
+        EncryptionState.Transform = EncryptionStateTransform.ApplyingPadding;
         if (inputData == null) throw new ArgumentNullException(nameof(inputData));
 
         int startPos = inputData.Length;
@@ -156,6 +158,7 @@ public class SymmetricCipher : ISymmetricCipher
     /// <exception cref="ArgumentException">Если данные некорректны или отступы повреждены.</exception>
     private byte[] RemovePadding(byte[] paddedData)
     {
+        EncryptionState.Transform = EncryptionStateTransform.RemovingPadding;
         if (paddedData == null || paddedData.Length == 0)
             throw new ArgumentException("Input data cannot be null or empty.");
 
@@ -227,6 +230,8 @@ public class SymmetricCipher : ISymmetricCipher
 
     public async Task<byte[]> EncryptMessageAsync(byte[] message)
     {
+        EncryptionState.Transform = EncryptionStateTransform.Analyzing;
+        
         List<byte[]> blocks = new List<byte[]>();
         List<byte> block = new List<byte>(BlockSize);
 
@@ -243,17 +248,26 @@ public class SymmetricCipher : ISymmetricCipher
         byte[] last = ApplyPadding(block.ToArray());
         if (last.Length > 0) blocks.Add(last);
         int size = message.Length < BlockSize ? BlockSize : message.Length - (message.Length % BlockSize) + last.Length;
+        
+        EncryptionState.Transform = EncryptionStateTransform.Encrypting;
+        EncryptionState.EncryptedBlocks = 0;
+        EncryptionState.BlocksToEncrypt = blocks.Count;
+        
         byte[] result = new byte[size];
         byte[]? prev;
-
-        byte[] ivBytes;
+        
         BigInteger initialCounter;
 
         int currentOffset;
         switch (_cipherMode)
         {
             case CipherMode.ECB:
-                IEnumerable<Task<byte[]>> tasks = blocks.Select(b => Task.Run(() => EncryptBlock(b)));
+                IEnumerable<Task<byte[]>> tasks = blocks.Select(b => Task.Run(() =>
+                {
+                    var tmp = EncryptBlock(b);
+                    EncryptionState.EncryptedBlocks += 1;
+                    return tmp;
+                }));
                 byte[][] encryptedBlocks = await Task.WhenAll(tasks);
                 
                 currentOffset = 0;
@@ -284,7 +298,7 @@ public class SymmetricCipher : ISymmetricCipher
                     destinationIndex: currentOffset,
                     length: prev.Length 
                 );
-                
+                EncryptionState.EncryptedBlocks += 1;
                 currentOffset += prev.Length;
 
 
@@ -300,6 +314,7 @@ public class SymmetricCipher : ISymmetricCipher
                     );
                     currentOffset += encryptedBlock.Length;
                     prev = encryptedBlock;
+                    EncryptionState.EncryptedBlocks += 1;
                 }
                 break;
 
@@ -326,6 +341,7 @@ public class SymmetricCipher : ISymmetricCipher
                     );
                     currentOffset += encryptedBlock.Length;
                     currentKeystream = prevKeystream;
+                    EncryptionState.EncryptedBlocks += 1;
                 }
                 
                 break;
@@ -344,6 +360,7 @@ public class SymmetricCipher : ISymmetricCipher
                     length: prev.Length 
                 );
                 currentOffset += prev.Length;
+                EncryptionState.EncryptedBlocks += 1;
 
                 foreach (var b in blocks.Skip(1))
                 {
@@ -357,6 +374,7 @@ public class SymmetricCipher : ISymmetricCipher
                     );
                     currentOffset += encryptedBlock.Length;
                     prev = encryptedBlock;
+                    EncryptionState.EncryptedBlocks += 1;
                 }
 
                 break;
@@ -375,6 +393,7 @@ public class SymmetricCipher : ISymmetricCipher
                     length: prev.Length 
                 );
                 currentOffset += prev.Length;
+                EncryptionState.EncryptedBlocks += 1;
 
                 for (int i = 1; i < blocks.Count; ++i)
                 {
@@ -388,6 +407,7 @@ public class SymmetricCipher : ISymmetricCipher
                     );
                     currentOffset += encryptedBlock.Length;
                     prev = encryptedBlock;
+                    EncryptionState.EncryptedBlocks += 1;
                 }
 
                 break;
@@ -427,6 +447,7 @@ public class SymmetricCipher : ISymmetricCipher
                         var encryptedCounter = EncryptBlock(counterBytes);
                         var encryptedBlock = XorTwoPartsCopy(encryptedCounter, item.Block);
                         encryptedBlocksDict[item.Index] = encryptedBlock;
+                        EncryptionState.EncryptedBlocks += 1;
                     });
                 
                 foreach (var kvp in encryptedBlocksDict.OrderBy(kv => kv.Key))
@@ -446,13 +467,16 @@ public class SymmetricCipher : ISymmetricCipher
                 }
                 break;
         }
-        
+        EncryptionState.Transform = EncryptionStateTransform.Idle;
+
         return result;
     }
     
 
     public async Task<byte[]> DecryptMessageAsync(byte[] ciphertext)
     {
+        EncryptionState.Transform = EncryptionStateTransform.Analyzing;
+
         List<byte[]> blocks = new List<byte[]>();
         List<byte> block = new List<byte>(BlockSize);
 
@@ -470,24 +494,34 @@ public class SymmetricCipher : ISymmetricCipher
         {
             throw new ArgumentException("Decryption failed, wrong blocks size");
         }
+        
+        EncryptionState.Transform = EncryptionStateTransform.Decrypting;
+        EncryptionState.EncryptedBlocks = 0;
+        EncryptionState.BlocksToEncrypt = blocks.Count;
+        
         List<byte> result = new List<byte>();
         result.Capacity = ciphertext.Length;
         
         byte[]? prev;
 
-        byte[] ivBytes;
         BigInteger initialCounter;
 
         switch (_cipherMode)
         {
             case CipherMode.ECB:
-                var tasks = blocks.Select(b => Task.Run(() => DecryptBlock(b)));
+                var tasks = blocks.Select(b => Task.Run(() =>
+                {
+                    var tmp = DecryptBlock(b);
+                    EncryptionState.EncryptedBlocks += 1;
+                    return tmp;
+                }));
+                
                 byte[][] decryptedBlocks = await Task.WhenAll(tasks);
                 result.AddRange(decryptedBlocks.SelectMany(b => b));
                 break;
 
             case CipherMode.CBC:
-                if (_iv == null) throw new ArgumentNullException(nameof(_iv));
+                if (_iv == null) throw new ArgumentException(nameof(_iv));
 
                 prev = _iv;
                 foreach (var b in blocks)
@@ -496,6 +530,7 @@ public class SymmetricCipher : ISymmetricCipher
                     var plain = XorTwoPartsCopy(decrypted, prev);
                     result.AddRange(plain);
                     prev = b;
+                    EncryptionState.EncryptedBlocks += 1;
                 }
 
                 break;
@@ -504,11 +539,14 @@ public class SymmetricCipher : ISymmetricCipher
                 if (_iv == null) throw new ArgumentException(nameof(_iv));
 
                 prev = EncryptBlock(_iv);
+                EncryptionState.EncryptedBlocks += 1;
                 result.AddRange(XorTwoPartsCopy(prev, blocks[0]));
+                
                 foreach (var b in blocks.Skip(1))
                 {
                     prev = EncryptBlock(prev);
                     result.AddRange(XorTwoPartsCopy(prev, b));
+                    EncryptionState.EncryptedBlocks += 1;
                 }
 
                 break;
@@ -522,6 +560,8 @@ public class SymmetricCipher : ISymmetricCipher
                     var plain = XorTwoPartsCopy(encrypted, b);
                     result.AddRange(plain);
                     prev = b;
+                    EncryptionState.EncryptedBlocks += 1;
+
                 }
 
                 break;
@@ -531,6 +571,7 @@ public class SymmetricCipher : ISymmetricCipher
                 
                 var firstBlock = DecryptBlock(blocks[0]);
                 var prevPlain = XorTwoPartsCopy(firstBlock, _iv);
+                EncryptionState.EncryptedBlocks += 1;
                 result.AddRange(prevPlain);
 
                 for (int i = 1; i < blocks.Count; i++)
@@ -539,6 +580,8 @@ public class SymmetricCipher : ISymmetricCipher
                     var plain = XorTwoPartsCopy(decrypted, XorTwoPartsCopy(blocks[i - 1], prevPlain));
                     result.AddRange(plain);
                     prevPlain = plain;
+                    EncryptionState.EncryptedBlocks += 1;
+
                 }
 
                 break;
@@ -578,6 +621,8 @@ public class SymmetricCipher : ISymmetricCipher
                     var encryptedCounter = EncryptBlock(counterBytes);
                     var decryptedBlock = XorTwoPartsCopy(encryptedCounter, item.Block);
                     decryptedBlocksDict[blockIndex] = decryptedBlock;
+                    EncryptionState.EncryptedBlocks += 1;
+
                 });
                 
                 result.AddRange(decryptedBlocksDict
@@ -599,6 +644,7 @@ public class SymmetricCipher : ISymmetricCipher
             result.AddRange(RemovePadding(lastBlock));
         }
 
+        EncryptionState.Transform = EncryptionStateTransform.Idle;
         return result.ToArray();
     }
     

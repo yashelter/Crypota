@@ -46,5 +46,6 @@ public class Deal128KeyExtension : IKeyExtension
 public class Deal128() : 
     FeistelNetwork(new Deal128KeyExtension(), new Deal128EncryptionTransformation(), 6)
 {
-
+    public override int BlockSize => 16;
+    public override int KeySize => 16;
 }

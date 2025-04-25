@@ -224,6 +224,8 @@ public class DesKeyExtension : IKeyExtension
 public class Des() : 
     FeistelNetwork(new DesKeyExtension(), new DesRoundTransformation(), 16)
 {
+    public override int BlockSize => 8;
+    public override int KeySize => 8;
 
     private static readonly int[]  IP = 
     [

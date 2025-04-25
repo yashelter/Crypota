@@ -29,8 +29,6 @@ class Program
         )
         {
             Key = key,
-            BlockSize = 8,
-            KeySize = 8,
         };
 
         var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();

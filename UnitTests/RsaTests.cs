@@ -114,7 +114,7 @@ public sealed class RsaTests
     [DataRow("54")]
     [DataRow("80808080801")]
     [DataRow("8080800000000000000000080801")]
-    [DataRow("561")] // can be, can not be. As says luck
+    [DataRow("561")] // Can be, cannot be. As says luck
     
     public void TestPrimaryTestNegative(string n)
     {
@@ -135,6 +135,7 @@ public sealed class RsaTests
         Assert.AreEqual(Probability.Composite, result);
     }
     
+    // MESSAGE: remember that message should be less than bit Length of a key
     [DataTestMethod]
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
@@ -145,7 +146,7 @@ public sealed class RsaTests
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
     public void TestRsaAlgo(string path)
     {
-        var rsa = new RsaService (RsaService.PrimaryTestOption.SolovayStrassenTest, 0.999, 3).GenerateKeyPair();
+        var rsa = new RsaService (RsaService.PrimaryTestOption.MillerRabinTest, 0.9999, 400).GenerateKeyPair();
 
         byte[] data = FileUtility.GetFileInBytes(path);
         byte[] encrypted = rsa.EncryptMessage(data);
