@@ -135,6 +135,7 @@ public sealed class RsaTests
         Assert.AreEqual(Probability.Composite, result);
     }
     
+    // MESSAGE: remember that message should be less than bit Length of a key
     [DataTestMethod]
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
@@ -145,7 +146,7 @@ public sealed class RsaTests
     [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
     public void TestRsaAlgo(string path)
     {
-        var rsa = new RsaService (RsaService.PrimaryTestOption.SolovayStrassenTest, 0.999, 3).GenerateKeyPair();
+        var rsa = new RsaService (RsaService.PrimaryTestOption.MillerRabinTest, 0.9999, 400).GenerateKeyPair();
 
         byte[] data = FileUtility.GetFileInBytes(path);
         byte[] encrypted = rsa.EncryptMessage(data);

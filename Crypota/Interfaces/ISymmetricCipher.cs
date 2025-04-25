@@ -8,4 +8,7 @@ public interface ISymmetricCipher
     public byte[] EncryptBlock(byte[] block);
     
     public byte[] DecryptBlock(byte[] block);
+    
+    public int BlockSize { get; }
+    public int KeySize { get; }
 }

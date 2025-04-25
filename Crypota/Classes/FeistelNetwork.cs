@@ -44,4 +44,7 @@ public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformatio
         
         return Network(rev, block);
     }
+
+    public virtual int BlockSize => 0;
+    public virtual int KeySize => 0;
 }

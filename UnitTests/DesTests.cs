@@ -158,8 +158,6 @@ public sealed class DesTests
         )
         {
             Key = key,
-            BlockSize = 8,
-            KeySize = 8,
         };
 
         var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
@@ -190,8 +188,6 @@ public sealed class DesTests
         )
         {
             Key = key,
-            BlockSize = 16,
-            KeySize = 16,
         };
 
         var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
@@ -223,8 +219,6 @@ public sealed class DesTests
         )
         {
             Key = key,
-            BlockSize = 8,
-            KeySize = 8,
         };
 
         var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
@@ -263,8 +257,6 @@ public sealed class DesTests
                 )
                 {
                     Key = key,
-                    BlockSize = 8,
-                    KeySize = 8,
                 };
 
                 var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
@@ -304,8 +296,6 @@ public sealed class DesTests
                 )
                 {
                     Key = key,
-                    BlockSize = 16,
-                    KeySize = 16,
                 };
 
                 var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
