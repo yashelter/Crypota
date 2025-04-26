@@ -32,6 +32,23 @@ public static class Utilities
         
         return d;
     }
+    
+    public static BigInteger Gcd(BigInteger a, BigInteger b, out List<BigInteger> coefficients)
+    {
+        coefficients = [];
+        while (b != 0)
+        {
+            BigInteger q = a / b;
+            coefficients.Add(q);
+
+            BigInteger temp = b;
+            b = a % b;
+            a = temp;
+        }
+
+        return a; 
+    }
+
 
     public static BigInteger BinaryPower(BigInteger a, BigInteger power)
     {
@@ -185,5 +202,23 @@ public static class Utilities
         
         return x;
     }
-    
+
+    public static (BigInteger? x1, BigInteger? x2) SolveQuadrantic(BigInteger b, BigInteger c)
+    {
+        BigInteger d = b * b - 4 * c;
+        if (d < 0)
+        {
+            return (null, null);
+        }
+        var prob = Sqrt(d);
+        if (prob * prob != d)
+        {
+            return (null, null);
+        }
+
+        BigInteger x1 = (-b - prob) / 2;
+        BigInteger x2 = (-b + prob) / 2;
+        
+        return (x1, x2);
+    }
 }

@@ -43,4 +43,22 @@ public sealed class RsaAttacks
         Assert.AreEqual(probD, d);
         Assert.AreEqual(probPhi, phi);
     }
+    
+    
+    [DataTestMethod]
+    [DataRow(10)]
+    [DataRow(40)]
+    [DataRow(400)]
+    [DataRow(800)]
+    public void TestWienerAttack(int keySize)
+    {
+        var rsa = new WeakRsaService (WeakRsaService.PrimaryTestOption.MillerRabinTest, 0.9999, keySize).GenerateKeyPair();
+        Console.WriteLine("Key pair generated");
+        
+        var (e, d, n, phi) = rsa.KeyPair;
+        var (probD, probPhi, lst) = AttackOnWiener.HackTheGate(e, n);
+
+        Assert.AreEqual(probD, d);
+        Assert.AreEqual(probPhi, phi);
+    }
 }
