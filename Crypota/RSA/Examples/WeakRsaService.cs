@@ -109,19 +109,22 @@ public class WeakRsaService(WeakRsaService.PrimaryTestOption primaryTestOption, 
         public (BigInteger e, BigInteger d, BigInteger N, BigInteger phi) GenerateKeyPair()
         {
             BigInteger p, q, N;
-            BigInteger d = 17, y = BigInteger.Zero, phi = BigInteger.Zero;
-            BigInteger e;
+            BigInteger d = 3, y = BigInteger.Zero, phi = BigInteger.Zero;
+            BigInteger e, gcd = BigInteger.One;
 
-            p = GeneratePrimaryNumber();
-            q = GenerateClosePrimary(p);
+            do
+            {
+                p = GeneratePrimaryNumber();
+                q = GenerateClosePrimary(p);
 
-            N = q * p;
-            phi = (p - BigInteger.One) * (q - BigInteger.One);
-            e = BigInteger.Zero;
+                N = q * p;
+                phi = (p - BigInteger.One) * (q - BigInteger.One);
+                e = BigInteger.Zero;
 
-            Gcd(phi, d, ref y, ref e);
-            e = (e % phi + phi) % phi;
-            
+                gcd = Gcd(phi, d, ref y, ref e);
+                e = (e % phi + phi) % phi;
+            } while (81 * BinaryPower(d, 4) >= N || gcd != 1);
+
             return (e, d, N, phi);
         }
     }

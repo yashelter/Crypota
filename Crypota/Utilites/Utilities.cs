@@ -216,8 +216,8 @@ public static class Utilities
             return (null, null);
         }
 
-        BigInteger x1 = (-b - prob) / 2;
-        BigInteger x2 = (-b + prob) / 2;
+        BigInteger x1 = (b - prob) / 2;
+        BigInteger x2 = (b + prob) / 2;
         
         return (x1, x2);
     }

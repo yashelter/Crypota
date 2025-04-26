@@ -12,7 +12,7 @@ public class AttackOnWiener
         List<(BigInteger, BigInteger)> result = [];
         var koefs = Decompose(e, n);
         
-        for (int i = 1; i < koefs.Count; i++)
+        for (int i = 1; i < koefs.Count+1; i++)
         {
             var (k, d) = Compose(koefs.GetRange(0, i));
             result.Add((k, d));

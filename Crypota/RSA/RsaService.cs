@@ -100,7 +100,7 @@ public class RsaService(RsaService.PrimaryTestOption primaryTestOption, double p
 
         public (BigInteger e, BigInteger d, BigInteger N) GenerateKeyPair()
         {
-            BigInteger p, q, N;
+            BigInteger p, q, N, gcd = BigInteger.One;
             BigInteger d, y = BigInteger.Zero;
             BigInteger minDiff = BigInteger.One << (_bitLength / 2 - 100);
             do
@@ -118,10 +118,10 @@ public class RsaService(RsaService.PrimaryTestOption primaryTestOption, double p
                 var phi = (p - BigInteger.One) * (q - BigInteger.One);
                 d = BigInteger.Zero;
                 
-                Gcd(phi, PublicExponent, ref y, ref d);
+                gcd = Gcd(phi, PublicExponent, ref y, ref d);
                 d = (d % phi + phi) % phi;
                 
-            } while (81 * BigInteger.Pow(d, 4) < N);
+            } while (81 * BigInteger.Pow(d, 4) < N || gcd != 1);
 
             return (PublicExponent, d, N);
         }

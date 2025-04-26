@@ -137,13 +137,10 @@ public sealed class RsaTests
     
     // MESSAGE: remember that message should be less than bit Length of a key
     [DataTestMethod]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
-    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
+    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
+    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
+    [DataRow("C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Tests\\Input\\message.txt")]
+
     public void TestRsaAlgo(string path)
     {
         var rsa = new RsaService (RsaService.PrimaryTestOption.MillerRabinTest, 0.9999, 400).GenerateKeyPair();
