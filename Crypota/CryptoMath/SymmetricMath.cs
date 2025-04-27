@@ -2,7 +2,7 @@
 
 namespace Crypota;
 
-public static class CryptoAlgorithms
+public static class SymmetricMath
 {
     public static void Swap<T>(ref T a, ref T b)
     {

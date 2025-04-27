@@ -1,11 +1,12 @@
 ﻿using System.Numerics;
 using Crypota;
-using Crypota.Classes;
+using Crypota.CryptoMath;
+using Crypota.Symmetric;
 using Crypota.PrimalityTests;
 using Crypota.RSA;
 
 namespace UnitTests;
-using static Crypota.Utilities;
+using static CryptoMath;
 
 [TestClass]
 public sealed class RsaTests
@@ -77,7 +78,6 @@ public sealed class RsaTests
     }
     
     [DataTestMethod]
-    
     [DataRow("100000000019")] 
     [DataRow("1000000007")] 
     [DataRow("1000000009")] 
@@ -85,8 +85,6 @@ public sealed class RsaTests
     [DataRow("51907")] 
     [DataRow("51913")] 
     [DataRow("51941")] 
-
-    
     public void TestPrimaryTestPositive(string n)
     {
         IPrimaryTest test = new FermatTest();

@@ -1,10 +1,9 @@
-﻿using Crypota;
-using Crypota.Classes;
-using Crypota.Classes.DES;
-using static Crypota.CryptoAlgorithms;
+﻿using Crypota.Symmetric;
+using Crypota.Symmetric.Deal;
+using static Crypota.SymmetricMath;
 using static Crypota.FileUtility;
 
-namespace UnitTests;
+namespace UnitTests.Des;
 
 [TestClass]
 public sealed class DesTests
@@ -92,7 +91,7 @@ public sealed class DesTests
     [DataRow(new byte[] { 1, 0, 0, 0, 0, 0, 0, 0 }, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0 }, "0D9F279BA5D87260")]
     public void TestDesAlgorithm(byte[] key, byte[] message, string expected)
     {
-        Des des = new Des() { Key = key };
+        Crypota.Symmetric.Des.Des des = new Crypota.Symmetric.Des.Des() { Key = key };
         var encrypted = des.EncryptBlock(message);
 
         for (int i = 0; i < message.Length; i++)
@@ -109,7 +108,7 @@ public sealed class DesTests
     [DataRow(new byte[] { 0, 1, 0, 24, 0, 1, 0, 12 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 })]
     public void TestDesSingle(byte[] key, byte[] message)
     {
-        Des des = new Des() { Key = key };
+        Crypota.Symmetric.Des.Des des = new Crypota.Symmetric.Des.Des() { Key = key };
         var encrypted = des.EncryptBlock(message);
         var decrypted = des.DecryptBlock(encrypted);
 
@@ -152,7 +151,7 @@ public sealed class DesTests
             key: key,
             mode: CipherMode.PCBC,
             padding: 0,
-            implementation: new Des(),
+            implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
             additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
         )
@@ -200,8 +199,8 @@ public sealed class DesTests
     }
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\Crypota\UnitTests\Tests\Input\Twofish.pdf")]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\Crypota\UnitTests\Tests\Input\img.jpeg")]
+    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\img.jpeg")]
+    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\Twofish.pdf")]
     public void TestOneModeDesWithFile(string filepath)
     {
         byte[] key = new byte[8];
@@ -213,7 +212,7 @@ public sealed class DesTests
             key: key,
             mode: CipherMode.ECB,
             padding: PaddingMode.ANSIX923,
-            implementation: new Des(),
+            implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
             additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
         )
@@ -233,7 +232,7 @@ public sealed class DesTests
 
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\Crypota\UnitTests\Tests\Input\message.txt")]
+    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\Twofish.pdf")]
     public void TestAllModesDesWithFile(string filepath)
     {
         byte[] key = new byte[8];
@@ -251,7 +250,7 @@ public sealed class DesTests
                     key: key,
                     mode: cm,
                     padding: pm,
-                    implementation: new Des(),
+                    implementation: new Crypota.Symmetric.Des.Des(),
                     iv: [0, 0, 0, 0, 0, 0, 0, 0],
                     additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
                 )
@@ -272,7 +271,7 @@ public sealed class DesTests
     }
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\Crypota\UnitTests\Tests\Input\message.txt")]
+    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\message.txt")]
     public void TestAllModesDealWithFile(string filepath)
     {
         byte[] key = new byte[16];

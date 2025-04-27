@@ -1,14 +1,11 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using System.Security.Cryptography;
+using Crypota.Symmetric;
 
-namespace Crypota.Classes;
+namespace Crypota.Symmetric;
 
-using static CryptoAlgorithms;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using static SymmetricMath;
 
 public enum CipherMode { ECB, CBC, PCBC, CFB, OFB, CTR, RD }
 public enum PaddingMode { Zeros, ANSIX923, PKCS7, ISO10126 }
@@ -30,7 +27,7 @@ public class SymmetricCipher : ISymmetricCipher
 
     public class RandomDeltaParameters
     {
-        public required int Delta { get; set; }
+        public required int Delta { get; init; }
     }
 
     public T GetParam<T>() where T : class

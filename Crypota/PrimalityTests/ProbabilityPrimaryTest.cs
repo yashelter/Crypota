@@ -20,7 +20,7 @@ public abstract class ProbabilityPrimaryTest : IPrimaryTest
         }
         
         BigInteger x = 1;
-        BigInteger targetP =  new (Math.Ceiling(1 / (1 - targetProbability)));
+        BigInteger targetP =  new (System.Math.Ceiling(1 / (1 - targetProbability)));
         HashSet<BigInteger> checkedA = new HashSet<BigInteger>();
 
         do

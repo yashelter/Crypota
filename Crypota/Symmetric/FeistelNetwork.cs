@@ -1,5 +1,5 @@
-﻿namespace Crypota.Classes;
-using static CryptoAlgorithms;
+﻿namespace Crypota.Symmetric;
+using static SymmetricMath;
 
 public enum LastSwap
 {

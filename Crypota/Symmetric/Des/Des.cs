@@ -1,5 +1,5 @@
-﻿namespace Crypota.Classes.DES;
-using static Crypota.CryptoAlgorithms;
+﻿namespace Crypota.Symmetric.Des;
+using static Crypota.SymmetricMath;
 
 public class DesRoundTransformation : IEncryptionTransformation
 {

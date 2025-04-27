@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Crypota;
+using Crypota.CryptoMath;
 using Crypota.RSA;
 using Crypota.RSA.Examples;
 using Crypota.RSA.HackingTheGate;
@@ -22,7 +23,7 @@ public sealed class RsaAttacks
         BigInteger a = BigInteger.Parse(num);
         BigInteger expected = BigInteger.Parse(sqrt);
 
-        var result = Utilities.Sqrt(a);
+        var result = CryptoMath.Sqrt(a);
         Assert.AreEqual(expected, result);
     }
     

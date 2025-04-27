@@ -1,11 +1,11 @@
-﻿namespace Crypota.Classes.DES;
-using static CryptoAlgorithms;
+﻿namespace Crypota.Symmetric.Deal;
+using static SymmetricMath;
 
 public class Deal128EncryptionTransformation : IEncryptionTransformation
 {
     public byte[] EncryptionTransformation(byte[] message, RoundKey roundKey)
     {
-        Des des = new Des() { Key = (byte[]) (roundKey.Key).Clone() };
+        Des.Des des = new Des.Des() { Key = (byte[]) (roundKey.Key).Clone() };
         return des.EncryptBlock(message);
     }
 }
@@ -21,7 +21,7 @@ public class Deal128KeyExtension : IKeyExtension
         var (k1, k2) = SplitToTwoParts(key);
 
         RoundKey[] roundKeys = new RoundKey[6];
-        Des des = new Des() { Key = k1 };
+        Des.Des des = new Des.Des() { Key = k1 };
 
         roundKeys[0] = (new RoundKey() { Key = des.EncryptBlock(k1) });
         roundKeys[1] = (new RoundKey() { Key = des.EncryptBlock(XorTwoPartsCopy(k2, roundKeys[0].Key)) });

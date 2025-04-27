@@ -1,5 +1,5 @@
 ﻿using System.Numerics;
-using static Crypota.Utilities;
+using static Crypota.CryptoMath.CryptoMath;
 
 namespace Crypota.RSA.HackingTheGate;
 

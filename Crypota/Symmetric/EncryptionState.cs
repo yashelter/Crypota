@@ -1,4 +1,4 @@
-﻿namespace Crypota.Classes;
+﻿namespace Crypota.Symmetric;
 
 public enum EncryptionStateTransform
 {

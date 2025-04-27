@@ -1,7 +1,7 @@
 ﻿using System.Numerics;
 
 namespace Crypota.PrimalityTests;
-using static Utilities;
+using static CryptoMath.CryptoMath;
 
 public class SolovayStrassenTest: ProbabilityPrimaryTest
 {

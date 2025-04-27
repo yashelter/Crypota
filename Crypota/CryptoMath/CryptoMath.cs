@@ -1,8 +1,8 @@
 ﻿using System.Numerics;
 
-namespace Crypota;
+namespace Crypota.CryptoMath;
 
-public static class Utilities
+public static partial class CryptoMath
 {
     
     public static BigInteger Gcd(BigInteger a, BigInteger b)
@@ -32,7 +32,41 @@ public static class Utilities
         
         return d;
     }
-    
+
+    public static BigInteger GcdIterative(BigInteger a, BigInteger b, out BigInteger x, out BigInteger y)
+    {
+        if (a < 0)
+            throw new ArgumentOutOfRangeException((nameof(a)), "a must be non-negative.");
+
+        if (b < 0)
+            throw new ArgumentOutOfRangeException((nameof(b)), "b must be non-negative.");
+
+        BigInteger x0 = BigInteger.One;
+        BigInteger y0 = BigInteger.Zero;
+        BigInteger x1 = BigInteger.Zero;
+        BigInteger y1 = BigInteger.One;
+
+        while (a != BigInteger.Zero)
+        {
+            BigInteger q = b / a;
+            BigInteger tempB = b;
+            b = a;
+            a = tempB % a;
+
+            BigInteger tempX0 = x0;
+            x0 = x1;
+            x1 = tempX0 - q * x1;
+
+            BigInteger tempY0 = y0;
+            y0 = y1;
+            y1 = tempY0 - q * y1;
+        }
+
+        x = x0;
+        y = y0;
+        return b;
+    }
+
     public static BigInteger Gcd(BigInteger a, BigInteger b, out List<BigInteger> coefficients)
     {
         coefficients = [];
@@ -54,16 +88,15 @@ public static class Utilities
     {
         BigInteger res = BigInteger.One;
         while (power != BigInteger.Zero)
+        {
             if (!power.IsEven)
             {
                 res *= a;
-                --power;
             }
-            else
-            {
-                a *= a;
-                power >>= 1;
-            }
+            
+            a *= a;
+            power >>= 1;
+        }
 
         return res;
     }
@@ -77,7 +110,6 @@ public static class Utilities
             if (!power.IsEven)
             {
                 res = (res * a) % mod;
-                --power;
             }
             a = (a * a) % mod;
             power >>= 1;
