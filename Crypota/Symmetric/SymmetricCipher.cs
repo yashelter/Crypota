@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using System.Security.Cryptography;
+using Crypota.Interfaces;
 using Crypota.Symmetric;
 
 namespace Crypota.Symmetric;

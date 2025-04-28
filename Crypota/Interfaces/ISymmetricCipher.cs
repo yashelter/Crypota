@@ -1,4 +1,4 @@
-﻿namespace Crypota;
+﻿namespace Crypota.Interfaces;
 
 
 public interface ISymmetricCipher

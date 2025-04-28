@@ -1,11 +1,9 @@
-﻿namespace Crypota.Symmetric;
+﻿using Crypota.Interfaces;
+
+namespace Crypota.Symmetric;
 using static SymmetricMath;
 
-public enum LastSwap
-{
-    NoSwap = 0,
-    Swap = 1,
-}
+
 
 public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation,
     uint rounds = 16)
