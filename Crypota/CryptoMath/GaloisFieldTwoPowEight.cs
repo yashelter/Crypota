@@ -20,7 +20,7 @@ public class GaloisFieldTwoPowEight
         return (byte) (a ^ b);
     }
 
-    private static byte MultiplyPolynomByXByMod(byte a, byte mod)
+    public static byte MultiplyPolynomByXByMod(byte a, byte mod)
     {
         if (!IrreducibleEightDegree.Value.Contains(mod))
         {

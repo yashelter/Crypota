@@ -2,9 +2,10 @@
 using static Crypota.CryptoMath.GaloisFieldTwoPowEight;
 namespace Crypota.Symmetric.Rijndael;
 
-public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCipher
+public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCipher
 {
-    public readonly Lazy<(byte[] sBox, byte[] invSBox)> SBoxes;
+    private readonly Lazy<(byte[] sBox, byte[] invSBox)> _sBoxes;
+    private readonly Lazy<byte[][]> _rcon;
     
     public byte[]? Key { get; set; }
 
@@ -12,8 +13,9 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     private readonly int _blockSize;
 
     public required byte IrreduciblePolynom { get; init; }
-    private readonly int _Nb;
-    private readonly int _Nr;
+    private readonly int _nb;
+    private readonly int _nk;
+    private int _nr;
 
     public required int BlockSize
     {
@@ -25,7 +27,9 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
                 throw new ArgumentOutOfRangeException(nameof(BlockSize));
             }
             _blockSize = value;
-            _Nb = value / 32;
+            _nb = value / 32;
+            _nr = Math.Max(_nk, _nb) + 6;
+
         }
     }
 
@@ -40,13 +44,16 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
             }
 
             _keySize = value;
-            _Nr = value / 32;
+            _nk = value / 32;
+            _nr = Math.Max(_nk, _nb) + 6;
+
         }
     }
     
-    public Rijindael()
+    public Rijndael()
     {
-        SBoxes = new Lazy<(byte[] sBox, byte[] invSBox)>(GenerateSBoxes);
+        _sBoxes = new Lazy<(byte[] sBox, byte[] invSBox)>(GenerateSBoxes);
+        _rcon = new Lazy<byte[][]>(GenerateRcon);
     }
     
     
@@ -92,7 +99,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     {
         for (int i = 0; i < state.Length; i++)
         {
-            state[i] = SBoxes.Value.sBox[state[i]];
+            state[i] = _sBoxes.Value.sBox[state[i]];
         }
     }
     
@@ -100,7 +107,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     {
         for (int i = 0; i < state.Length; i++)
         {
-            state[i] = SBoxes.Value.invSBox[state[i]];
+            state[i] = _sBoxes.Value.invSBox[state[i]];
         }
     }
     
@@ -117,6 +124,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
 
         Array.Copy(temp, 0, line, line.Length - shift, shift);
     }
+    
 
     private static void ShiftRowCycleRight(ref byte[] line, int shift)
     {
@@ -133,7 +141,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     }
 
     
-    private void ShiftRows(ref byte[] state)
+    private void ShiftRows(byte[] state)
     {
         int len = BlockSize / 32;
 
@@ -155,7 +163,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
         }
     }
     
-    private void InvertedShiftRows(ref byte[] state)
+    private void InvertedShiftRows(byte[] state)
     {
         int len = BlockSize / 32;
 
@@ -180,7 +188,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     private void MixColumns(byte[] state)
     {
         var cx = PolynomialInGF.GetCx();
-        for (int i = 0; i < _Nb; i++)
+        for (int i = 0; i < _nb; i++)
         {
             var p = new PolynomialInGF(state[3 + 4*i], state[2 + 4*i], state[1 + 4*i], state[4*i]);
             p = MultiplicationPolynoms(p, cx, IrreduciblePolynom);
@@ -192,7 +200,7 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
     private void InvertedMixColumns(byte[] state)
     {
         var cx = PolynomialInGF.GetInvCx();
-        for (int i = 0; i < _Nb; i++)
+        for (int i = 0; i < _nb; i++)
         {
             var p = new PolynomialInGF(state[3 + 4*i], state[2 + 4*i], state[1 + 4*i], state[4*i]);
             p = MultiplicationPolynoms(p, cx, IrreduciblePolynom);
@@ -200,6 +208,15 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
         } 
     }
 
+    private void XorTwoArrays(byte[] a, byte[] b)
+    {
+        for (int i = 0; i < a.Length; i++)
+        {
+            a[i] = (byte) (a[i] ^ b[i]);
+        }
+    }
+
+    
     private void AddRoundKey(byte[] state, RoundKey roundKey)
     {
         if (roundKey.Key is null)
@@ -212,25 +229,157 @@ public class Rijindael : IKeyExtension, IEncryptionTransformation, ISymmetricCip
             state[i] = (byte) (state[i] ^ roundKey.Key[i]);
         }
     }
+
+    private static void RotBytes(byte[] b)
+    {
+        var temp = b[0];
+        b[0] = b[1];
+        b[1] = b[2];
+        b[2] = b[3];
+        b[3] = temp;
+    }
+
+    private byte[][] GenerateRcon()
+    {
+        int size = (_nb * (_nr + 1) * 4);
+        byte[][] result = new byte[size][];
+        result[0] = new byte[4];
+        result[1] = new byte[4];
+        result[1][0] = 1;
+
+        for (int i = 2; i < size; i++)
+        {
+            byte poly = result[i - 1][0];
+            byte rci = MultiplyPolynomByXByMod(poly, IrreduciblePolynom);
+            result[i] = new byte[4];
+            result[i][0] = rci;
+        }
+        return result;
+    }
+    
+    
+    private byte[] KeyExpansion(byte[] key)
+    {
+        int keySizeBytes = _nk * 4;
+        int expandedSizeWords = _nb * (_nr + 1); 
+        int size = expandedSizeWords * 4; 
+        
+        byte[] expandedKey = new byte[size];
+        
+        Array.Copy(key, 0, expandedKey, 0, keySizeBytes);
+        
+        byte[] temp = new byte[4];
+        byte[] w = new byte[4];
+
+        for (int i = _nk; i < expandedSizeWords; i++)
+        {
+            int prevWordByteIndex = (i - 1) * 4;
+            Array.Copy(expandedKey, prevWordByteIndex, temp, 0, 4);
+            
+            if (i % _nk == 0)
+            {
+                RotBytes(temp);
+                SubBytes(temp);
+                XorTwoArrays(temp, _rcon.Value[i / _nk]);
+            } else if (_nk > 6 && i % _nk == 4)
+            {
+                SubBytes(temp);
+            }
+            Array.Copy(expandedKey, (i - _nk) * 4, w, 0, 4);
+            XorTwoArrays(temp, w);
+            
+            Array.Copy(temp, 0, expandedKey, i * 4, 4);
+        }
+        
+        return expandedKey;
+    }
+    
     
     public RoundKey[] GetRoundKeys(byte[] key)
     {
-        throw new NotImplementedException();
+        int roundKeySizeBytes = _nb * 4;
+        RoundKey[] result = new RoundKey[_nr + 1];
+        var expandedKey = KeyExpansion(key);
+
+        for (int i = 0; i <= _nr; i++) 
+        {
+            result[i] = new RoundKey() { Key = new byte[roundKeySizeBytes] };
+            int sourceIndex = i * roundKeySizeBytes;
+            Array.Copy(expandedKey, sourceIndex, result[i].Key!, 0, roundKeySizeBytes);
+        }
+        return result;
     }
 
+    // Round
     public byte[] EncryptionTransformation(byte[] message, RoundKey roundKey)
     {
-        throw new NotImplementedException();
+        SubBytes(message);
+        ShiftRows(message);
+        MixColumns(message);
+        AddRoundKey(message, roundKey);
+        return message;
     }
 
+    public byte[] DecryptionTransformation(byte[] message, RoundKey roundKey)
+    {
+        AddRoundKey(message, roundKey);
+        InvertedMixColumns(message);
+        InvertedShiftRows(message);
+        InvertedSubBytes(message);
+        return message;
+    }
+
+
+    public byte[] FinalRound(byte[] message, RoundKey roundKey)
+    {
+        SubBytes(message);
+        ShiftRows(message);
+        AddRoundKey(message, roundKey);
+        return message;
+    }
+    
+    
+    public byte[] InvertedFinalRound(byte[] message, RoundKey roundKey)
+    {
+        AddRoundKey(message, roundKey);
+        InvertedShiftRows(message);
+        InvertedSubBytes(message);
+        return message;
+    }
+    
+    
     public byte[] EncryptBlock(byte[] block)
     {
-        throw new NotImplementedException();
+        if (Key is null)
+        {
+            throw new ArgumentException(nameof(Key));
+        }
+        var keys = GetRoundKeys(Key);
+        AddRoundKey(block, keys[0]);
+        for (int i = 1; i < _nr; i++)
+        {
+            EncryptionTransformation(block, keys[i]);
+        }
+        FinalRound(block, keys[_nr]);
+        return block;
     }
 
     public byte[] DecryptBlock(byte[] block)
     {
-        throw new NotImplementedException();
+        if (Key is null)
+        {
+            throw new ArgumentException(nameof(Key));
+        }
+        var keys = GetRoundKeys(Key);
+        InvertedFinalRound(block, keys[_nr]);
+
+        for (int i = _nr-1; i > 0; i--)
+        {
+            DecryptionTransformation(block, keys[i]);
+        }
+        AddRoundKey(block, keys[0]);
+
+        return block;
     }
 
 
