@@ -37,6 +37,7 @@ public sealed class RijndaelTests
             Key = key
         };
 
+        
 
         byte[] encryptedMessage = rijndael.EncryptBlock(messageToProcess);
         byte[] decryptedMessage = rijndael.DecryptBlock(encryptedMessage);

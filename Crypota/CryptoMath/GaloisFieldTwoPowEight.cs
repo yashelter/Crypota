@@ -245,7 +245,4 @@ public class GaloisFieldTwoPowEight
         
         return new PolynomialInGF(d3, d2, d1, d0);
     }
-    
-    
-
 }

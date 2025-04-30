@@ -13,8 +13,8 @@ public static class SymmetricMath
 
     public enum IndexingRules : uint
     {
-        FromSmallestToBiggest = 0,
-        FromBiggestToSmallest = 1,
+        FromRightToLeft = 0,
+        FromLeftToRight = 1,
     }
 
 
@@ -29,7 +29,7 @@ public static class SymmetricMath
 
 
     public static byte[] PermuteBits(byte[] sourceValue, int[] rulesOfPermutations,
-        int startBitNumber = 0, IndexingRules indexingRules = IndexingRules.FromBiggestToSmallest)
+        int startBitNumber = 0, IndexingRules indexingRules = IndexingRules.FromLeftToRight)
     {
         int size = rulesOfPermutations.Length / 8 + (rulesOfPermutations.Length % 8 == 0 ? 0 : 1);
         byte[] result = new byte[size];
@@ -39,7 +39,7 @@ public static class SymmetricMath
 
         foreach (int position in rulesOfPermutations)
         {
-            if (indexingRules == IndexingRules.FromSmallestToBiggest)
+            if (indexingRules == IndexingRules.FromRightToLeft)
             {
                 int invesion = sourceValue.Length * 8 - 1 - position;
                 result[byteIndex] |= (byte)(GetBitOnPositon(sourceValue, invesion + startBitNumber) << (7 - bitIndex));
@@ -48,7 +48,6 @@ public static class SymmetricMath
             else
             {
                 result[byteIndex] |= (byte)(GetBitOnPositon(sourceValue, position - startBitNumber) << (7 - bitIndex));
-
             }
 
             ++bitIndex;

@@ -31,7 +31,7 @@ public sealed class DesTests
     public void TestPermuteBitsFromBiggestToSmallest(byte[] val, int[] rules, byte[] exp)
     {
 
-        var result = PermuteBits(val, rules, 0, IndexingRules.FromBiggestToSmallest);
+        var result = PermuteBits(val, rules, 0, IndexingRules.FromLeftToRight);
 
         for (int i = 0; i < result.Length; i++)
         {
@@ -46,7 +46,7 @@ public sealed class DesTests
     public void TestPermuteBitsFromSmallestToBiggest(byte[] val, int[] rules, byte[] exp)
     {
 
-        var result = PermuteBits(val, rules, 0, IndexingRules.FromSmallestToBiggest);
+        var result = PermuteBits(val, rules, 0, IndexingRules.FromRightToLeft);
 
         for (int i = 0; i < result.Length; i++)
         {
@@ -61,7 +61,7 @@ public sealed class DesTests
     public void TestStartBitNumberPermuteBits(byte[] val, int[] rules, byte[] exp)
     {
 
-        var result = PermuteBits(val, rules, 1, IndexingRules.FromSmallestToBiggest);
+        var result = PermuteBits(val, rules, 1, IndexingRules.FromRightToLeft);
 
         for (int i = 0; i < result.Length; i++)
         {

@@ -8,7 +8,7 @@ public class ChainedFraction
 {
     public static List<BigInteger> Decompose(BigInteger a, BigInteger b)
     {
-        List<BigInteger> result = [];
+        List<BigInteger> result;
         Gcd(a, b, out result);
         return result; 
     }
