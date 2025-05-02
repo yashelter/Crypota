@@ -32,17 +32,16 @@ public sealed class RijndaelTests
         RijndaelCipher rijndael = new RijndaelCipher
         {
             IrreduciblePolynom = 0x1B,
-            BlockSize = blockSizeBits,
-            KeySize = keySizeBits,
+            BlockSizeBits = blockSizeBits,
+            KeySizeBits = keySizeBits,
             Key = key
         };
 
         
+        rijndael.EncryptBlock(messageToProcess);
+        rijndael.DecryptBlock(messageToProcess);
 
-        byte[] encryptedMessage = rijndael.EncryptBlock(messageToProcess);
-        byte[] decryptedMessage = rijndael.DecryptBlock(encryptedMessage);
-
-        CollectionAssert.AreEqual(originalMessage, decryptedMessage,
+        CollectionAssert.AreEqual(originalMessage, messageToProcess,
             $"Decryption failed for KeySize={keySizeBits}, BlockSize={blockSizeBits}. Decrypted data does not match original.");
     }
 }

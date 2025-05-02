@@ -1,13 +1,17 @@
 ﻿using Crypota.Symmetric;
 using Crypota.Symmetric.Deal;
-using static Crypota.SymmetricMath;
+using static Crypota.SymmetricUtils;
 using static Crypota.FileUtility;
 
-namespace UnitTests.Des;
+namespace UnitTests.Tests.Des;
 
 [TestClass]
 public sealed class DesTests
 {
+    private const string Filepath1 = "C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Input\\message.txt";
+    private const string Filepath2 = "C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Input\\img.jpeg";
+    private const string Filepath3 = "C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Input\\Twofish.pdf";
+    
     [DataTestMethod]
     [DataRow(new byte[] { }, new byte[] { }, new byte[] { })]
     [DataRow(new byte[] { 0xff, 0x00 }, new byte[] { 0xff }, new byte[] { 0x00 })]
@@ -92,11 +96,11 @@ public sealed class DesTests
     public void TestDesAlgorithm(byte[] key, byte[] message, string expected)
     {
         Crypota.Symmetric.Des.Des des = new Crypota.Symmetric.Des.Des() { Key = key };
-        var encrypted = des.EncryptBlock(message);
+        des.EncryptBlock(message);
 
         for (int i = 0; i < message.Length; i++)
         {
-            Assert.AreEqual(ArrayToHexString(encrypted), expected);
+            Assert.AreEqual(ArrayToHexString(message), expected);
         }
     }
 
@@ -109,12 +113,14 @@ public sealed class DesTests
     public void TestDesSingle(byte[] key, byte[] message)
     {
         Crypota.Symmetric.Des.Des des = new Crypota.Symmetric.Des.Des() { Key = key };
-        var encrypted = des.EncryptBlock(message);
-        var decrypted = des.DecryptBlock(encrypted);
+        var data = message.ToArray();
+        
+        des.EncryptBlock(message);
+        des.DecryptBlock(message);
 
         for (int i = 0; i < message.Length; i++)
         {
-            Assert.AreEqual(message[i], decrypted[i]);
+            Assert.AreEqual(data[i], message[i]);
         }
     }
 
@@ -130,12 +136,14 @@ public sealed class DesTests
     public void TestDealSingle(byte[] key, byte[] message)
     {
         Deal128 deal128 = new Deal128() { Key = key };
-        var encrypted = deal128.EncryptBlock(message);
-        var decrypted = deal128.DecryptBlock(encrypted);
+        var data = message.ToArray();
+        
+        deal128.EncryptBlock(message);
+        deal128.DecryptBlock(message);
 
         for (int i = 0; i < message.Length; i++)
         {
-            Assert.AreEqual(message[i], decrypted[i]);
+            Assert.AreEqual(message[i], data[i]);
         }
     }
 
@@ -150,7 +158,7 @@ public sealed class DesTests
         (
             key: key,
             mode: CipherMode.PCBC,
-            padding: 0,
+            padding: PaddingMode.ANSIX923,
             implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
             additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
@@ -179,7 +187,7 @@ public sealed class DesTests
         SymmetricCipher cipher = new SymmetricCipher
         (
             key: key,
-            mode: CipherMode.OFB,
+            mode: CipherMode.CFB,
             padding: PaddingMode.ANSIX923,
             implementation: new Deal128(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -199,19 +207,20 @@ public sealed class DesTests
     }
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\img.jpeg")]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\Twofish.pdf")]
+    [DataRow(Filepath1)]
+    [DataRow(Filepath2)]
     public void TestOneModeDesWithFile(string filepath)
     {
         byte[] key = new byte[8];
 
         byte[] message = GetFileInBytes(filepath);
+        byte[] expected = GetFileInBytes(filepath);
 
         SymmetricCipher cipher = new SymmetricCipher
         (
             key: key,
             mode: CipherMode.ECB,
-            padding: PaddingMode.ANSIX923,
+            padding: PaddingMode.Zeros,
             implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
             additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
@@ -225,14 +234,14 @@ public sealed class DesTests
 
         for (int k = 0; k < message.Length; k++)
         {
-            Assert.AreEqual(message[k], decrypted[k]);
+            Assert.AreEqual(expected[k], decrypted[k]);
         }
     }
 
 
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\Twofish.pdf")]
+    [DataRow(Filepath3)]
     public void TestAllModesDesWithFile(string filepath)
     {
         byte[] key = new byte[8];
@@ -242,7 +251,7 @@ public sealed class DesTests
         for (int i = 0; i < 4; i++)
         {
             PaddingMode pm = (PaddingMode)i;
-            for (int j = 0; j < 6; j++)
+            for (int j = 0; j < 7; j++)
             {
                 CipherMode cm = (CipherMode)j;
                 SymmetricCipher cipher = new SymmetricCipher
@@ -263,7 +272,8 @@ public sealed class DesTests
 
                 for (int k = 0; k < message.Length; k++)
                 {
-                    Assert.AreEqual(message[k], decrypted[k]);
+                    Assert.AreEqual(message[k], decrypted[k], $"Wrong data for cipher mode: {cm.ToString()}, " +
+                                                              $"padding mode: {pm.ToString()}");
                 }
 
             }
@@ -271,17 +281,17 @@ public sealed class DesTests
     }
 
     [DataTestMethod]
-    [DataRow(@"C:\Users\yashelter\Desktop\Crypota\UnitTests\Tests\Input\message.txt")]
+    [DataRow(Filepath1)]
     public void TestAllModesDealWithFile(string filepath)
     {
         byte[] key = new byte[16];
 
         byte[] message = GetFileInBytes(filepath);
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 1; i < 4; i++)
         {
             PaddingMode pm = (PaddingMode)i;
-            for (int j = 0; j < 6; j++)
+            for (int j = 0; j < 7; j++)
             {
                 CipherMode cm = (CipherMode)j;
                 SymmetricCipher cipher = new SymmetricCipher
@@ -302,7 +312,8 @@ public sealed class DesTests
 
                 for (int k = 0; k < message.Length; k++)
                 {
-                    Assert.AreEqual(message[k], decrypted[k]);
+                    Assert.AreEqual(message[k], decrypted[k], $"Wrong data for cipher mode: {cm.ToString()}, " +
+                                                              $"padding mode: {pm.ToString()}");
                 }
 
             }

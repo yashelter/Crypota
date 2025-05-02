@@ -4,12 +4,12 @@ namespace Crypota.CryptoMath;
 
 public class GaloisFieldTwoPowEight
 {
-    public struct PolynomialInGF(byte k3, byte k2, byte k1, byte k0)
+    public struct PolynomialInGf(byte k3, byte k2, byte k1, byte k0)
     {
         public byte k3 = k3, k2 = k2, k1 = k1, k0 = k0;
         // k3 * x^3 + k2 * x^2 +..
-        public static PolynomialInGF GetCx() => new PolynomialInGF(0x03, 0x01, 0x01, 0x02);
-        public static PolynomialInGF GetInvCx() => new PolynomialInGF(0x0B, 0x0D, 0x09, 0x0E);
+        public static PolynomialInGf GetCx() => new PolynomialInGf(0x03, 0x01, 0x01, 0x02);
+        public static PolynomialInGf GetInvCx() => new PolynomialInGf(0x0B, 0x0D, 0x09, 0x0E);
     }
     
     
@@ -22,10 +22,8 @@ public class GaloisFieldTwoPowEight
 
     public static byte MultiplyPolynomByXByMod(byte a, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod))
-        {
-            throw new NotIrreduciblePolynomException();
-        }
+        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
+        
         
         if ((a & 0x80) == 0x80)
         {
@@ -36,10 +34,8 @@ public class GaloisFieldTwoPowEight
     
     public static byte MultiplyPolynomsByMod(byte a, byte b, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod))
-        {
-            throw new NotIrreduciblePolynomException();
-        }
+        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
+        
         byte result = 0;
         for (int i = 0; i < 8; i++)
         {
@@ -218,16 +214,14 @@ public class GaloisFieldTwoPowEight
     
     public static byte GetOppositePolynom(byte poly, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod))
-        {
-            throw new NotIrreduciblePolynomException();
-        }
+        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
+        
         return BinaryPowerPolynomByMod(poly, 254, mod);
     }
 
-    public static PolynomialInGF AdditionPolynoms(PolynomialInGF a, PolynomialInGF b)
+    public static PolynomialInGf AdditionPolynoms(PolynomialInGf a, PolynomialInGf b)
     {
-        return new PolynomialInGF(
+        return new PolynomialInGf(
             AdditionPolynoms(a.k0, b.k0),
             AdditionPolynoms(a.k1, b.k1),
             AdditionPolynoms(a.k2, b.k2),
@@ -236,13 +230,13 @@ public class GaloisFieldTwoPowEight
     
     
     
-    public static PolynomialInGF MultiplicationPolynoms(PolynomialInGF a, PolynomialInGF b, byte mod)
+    public static PolynomialInGf MultiplicationPolynoms(PolynomialInGf a, PolynomialInGf b, byte mod)
     {
         byte d0 = (byte)((MultiplyPolynomsByMod(a.k0, b.k0, mod) ^ MultiplyPolynomsByMod(a.k3, b.k1, mod)) ^ (MultiplyPolynomsByMod(a.k2, b.k2, mod) ^ MultiplyPolynomsByMod(a.k1, b.k3, mod)));
         byte d1 = (byte)((MultiplyPolynomsByMod(a.k1, b.k0, mod) ^ MultiplyPolynomsByMod(a.k0, b.k1, mod)) ^ (MultiplyPolynomsByMod(a.k3, b.k2, mod) ^ MultiplyPolynomsByMod(a.k2, b.k3, mod)));
         byte d2 = (byte)((MultiplyPolynomsByMod(a.k2, b.k0, mod) ^ MultiplyPolynomsByMod(a.k1, b.k1, mod)) ^ (MultiplyPolynomsByMod(a.k0, b.k2, mod) ^ MultiplyPolynomsByMod(a.k3, b.k3, mod)));
         byte d3 = (byte)((MultiplyPolynomsByMod(a.k3, b.k0, mod) ^ MultiplyPolynomsByMod(a.k2, b.k1, mod)) ^ (MultiplyPolynomsByMod(a.k1, b.k2, mod) ^ MultiplyPolynomsByMod(a.k0, b.k3, mod)));
         
-        return new PolynomialInGF(d3, d2, d1, d0);
+        return new PolynomialInGf(d3, d2, d1, d0);
     }
 }

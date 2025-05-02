@@ -2,7 +2,7 @@
 
 namespace Crypota;
 
-public static class SymmetricMath
+public static class SymmetricUtils
 {
     public static void Swap<T>(ref T a, ref T b)
     {
@@ -18,17 +18,26 @@ public static class SymmetricMath
     }
 
 
-    public static byte GetBitOnPositon(in byte[] array, int position)
+    public static byte GetBitOnPositon(Span<byte> array, int position)
     {
         int byteIndex = position / 8;
         int bitIndex = 7 - (position % 8);
 
         return (byte)((array[byteIndex] & (1 << bitIndex)) >> bitIndex);
     }
+    
+    public static void XorInPlace(Span<byte> target, ReadOnlySpan<byte> source)
+    {
+        if (target.Length != source.Length)
+            throw new ArgumentException("Spans must have the same length for XOR operation.");
+        for (int i = 0; i < target.Length; i++)
+        {
+            target[i] ^= source[i];
+        }
+    }
+    
 
-
-
-    public static byte[] PermuteBits(byte[] sourceValue, int[] rulesOfPermutations,
+    public static byte[] PermuteBits(Span<byte> sourceValue, int[] rulesOfPermutations,
         int startBitNumber = 0, IndexingRules indexingRules = IndexingRules.FromLeftToRight)
     {
         int size = rulesOfPermutations.Length / 8 + (rulesOfPermutations.Length % 8 == 0 ? 0 : 1);
@@ -141,7 +150,7 @@ public static class SymmetricMath
     /// <param name="b"></param>
     /// <returns>ref on array a</returns>
     /// <exception cref="ArgumentException"></exception>
-    public static byte[] XorTwoParts(ref byte[] a, in byte[] b)
+    public static Span<byte> XorTwoParts(Span<byte> a, Span<byte> b)
     {
         if (a.Length != b.Length)
         {
@@ -266,6 +275,19 @@ public static class SymmetricMath
         StringBuilder builder = new StringBuilder();
         array.ToList().ForEach(b => builder.Append(b.ToString("X2")));
         return builder.ToString();
+    }
+    
+    public static void XorBlocks(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> destination)
+    {
+        if (a.Length != b.Length || a.Length != destination.Length)
+        {
+            throw new ArgumentException("All spans must have the same length for XOR operation.");
+        }
+
+        for (int i = 0; i < destination.Length; i++)
+        {
+            destination[i] = (byte)(a[i] ^ b[i]);
+        }
     }
 
 }

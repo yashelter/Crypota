@@ -1,6 +1,6 @@
 using System.Numerics;
 using static Crypota.CryptoMath.CryptoMath;
-using static Crypota.SymmetricMath;
+using static Crypota.SymmetricUtils;
 
 namespace Crypota.RSA.HackingTheGate;
 
