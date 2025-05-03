@@ -67,7 +67,7 @@ public class WeakRsaService(WeakRsaService.PrimaryTestOption primaryTestOption, 
         private byte[] GetRandomBytes(int maxBits)
         {
             int size =  maxBits / 8 + (maxBits % 8 == 0 ? 0 : 1);
-            byte mask = (byte) (1 << (maxBits % 8) - 1);
+            byte mask = (byte)(1 << ((maxBits % 8) - 1));
             byte[] bytes = new byte[size];
             _rng.GetBytes(bytes);
             bytes[^1] &= mask;

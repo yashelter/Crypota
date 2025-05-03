@@ -1,9 +1,8 @@
-﻿namespace Crypota;
-
-using static Crypota.RoundKey;
+﻿namespace Crypota.Interfaces;
 
 
 public interface IEncryptionTransformation
 {
-    public byte[] EncryptionTransformation(byte[] message, RoundKey roundKey);
+    public void EncryptionTransformation(Span<byte> state, Span<byte> roundKey);
+    public void DecryptionTransformation(Span<byte> state, Span<byte> roundKey);
 }

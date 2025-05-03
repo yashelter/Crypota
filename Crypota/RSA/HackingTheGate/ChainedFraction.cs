@@ -1,6 +1,6 @@
 using System.Numerics;
 using static Crypota.CryptoMath.CryptoMath;
-using static Crypota.SymmetricMath;
+using static Crypota.SymmetricUtils;
 
 namespace Crypota.RSA.HackingTheGate;
 
@@ -8,7 +8,7 @@ public class ChainedFraction
 {
     public static List<BigInteger> Decompose(BigInteger a, BigInteger b)
     {
-        List<BigInteger> result = [];
+        List<BigInteger> result;
         Gcd(a, b, out result);
         return result; 
     }

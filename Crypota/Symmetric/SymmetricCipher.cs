@@ -1,19 +1,23 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using System.Security.Cryptography;
+using Crypota.Interfaces;
 using Crypota.Symmetric;
+using Crypota.Symmetric.Exceptions;
+using Crypota.Symmetric.Handlers;
 
 namespace Crypota.Symmetric;
 
-using static SymmetricMath;
+using static Crypota.SymmetricUtils;
 
-public enum CipherMode { ECB, CBC, PCBC, CFB, OFB, CTR, RD }
+public enum CipherMode { ECB, CBC, OFB, PCBC, CTR, RD, CFB }
+
 public enum PaddingMode { Zeros, ANSIX923, PKCS7, ISO10126 }
 
 public class SymmetricCipher : ISymmetricCipher
 {
-
     private byte[]? _key;
+
     public int BlockSize { get;  }
     public int KeySize { get;  }
 
@@ -30,7 +34,7 @@ public class SymmetricCipher : ISymmetricCipher
         public required int Delta { get; init; }
     }
 
-    public T GetParam<T>() where T : class
+    private T GetParam<T>() where T : class
     {
         string key = typeof(T).Name;
         if (_params.TryGetValue(key, out object? value))
@@ -80,11 +84,10 @@ public class SymmetricCipher : ISymmetricCipher
         Key = key;
         _params = additionalParams.ToDictionary(p => p.GetType().Name);
     }
+    
+    public void EncryptBlock(Span<byte> state) => _implementation.EncryptBlock(state);
 
-
-    public byte[] EncryptBlock(byte[] block) => _implementation.EncryptBlock(block);
-
-    public byte[] DecryptBlock(byte[] block) => _implementation.DecryptBlock(block);
+    public void DecryptBlock(Span<byte> state) => _implementation.DecryptBlock(state);
 
 
     /// <summary>
@@ -93,26 +96,21 @@ public class SymmetricCipher : ISymmetricCipher
     /// </summary>
     /// <param name="inputData">Входные данные (последний, возможно неполный, блок).</param>
     /// <returns>Новый массив байт с добавленными отступами.</returns>
-    private byte[] ApplyPadding(byte[] inputData)
+    private byte[] ApplyPadding(ReadOnlySpan<byte> inputData)
     {
         EncryptionState.Transform = EncryptionStateTransform.ApplyingPadding;
-        if (inputData == null) throw new ArgumentNullException(nameof(inputData));
 
         int startPos = inputData.Length;
         int paddingBytesNeeded = BlockSize - (startPos % BlockSize);
         
         byte[] paddedBlock = new byte[BlockSize];
-        Array.Copy(inputData, 0, paddedBlock, 0, startPos);
+        inputData.CopyTo(paddedBlock);
 
         startPos = startPos == BlockSize ? 0 : startPos;
         
         switch (_paddingMode)
         {
             case PaddingMode.Zeros:
-                if (BlockSize == inputData.Length)
-                {
-                    return inputData;
-                }
                 break;
             
             case PaddingMode.ANSIX923:
@@ -140,7 +138,7 @@ public class SymmetricCipher : ISymmetricCipher
                 break;
             
             default:
-                 throw new NotSupportedException($"Padding mode {_paddingMode} is not supported");
+                 throw new InvalidPaddingException($"Padding mode {_paddingMode} is not supported");
         }
 
         return paddedBlock;
@@ -184,465 +182,204 @@ public class SymmetricCipher : ISymmetricCipher
             case PaddingMode.ANSIX923:
                 paddingSize = lastByte;
                 if (paddingSize == 0 || paddingSize > BlockSize)
-                    throw new ArgumentException($"Invalid ANSIX923 padding size: {paddingSize}");
+                    throw new InvalidPaddingException($"Invalid ANSIX923 padding size: {paddingSize}");
 
                 for (int i = originalLength - paddingSize; i < originalLength - 1; i++)
                 {
                     if (paddedData[i] != 0x00)
-                        throw new ArgumentException($"Invalid ANSIX923 padding byte at index {i}");
+                        throw new InvalidPaddingException($"Invalid ANSIX923 padding byte at index {i}");
                 }
                 break;
 
             case PaddingMode.PKCS7:
                 paddingSize = lastByte;
                 if (paddingSize == 0 || paddingSize > BlockSize)
-                    throw new ArgumentException($"Invalid PKCS7 padding size: {paddingSize}");
+                    throw new InvalidPaddingException($"Invalid PKCS7 padding size: {paddingSize}");
 
                 for (int i = originalLength - paddingSize; i < originalLength; i++)
                 {
                     if (paddedData[i] != paddingSize)
-                        throw new ArgumentException($"Invalid PKCS7 padding byte at index {i}. Expected {paddingSize}, got {paddedData[i]}");
+                        throw new InvalidPaddingException($"Invalid PKCS7 padding byte at index {i}. Expected {paddingSize}, got {paddedData[i]}");
                 }
                 break;
 
             case PaddingMode.ISO10126:
                 paddingSize = lastByte;
                 if (paddingSize == 0 || paddingSize > BlockSize)
-                    throw new ArgumentException($"Invalid ISO10126 padding size: {paddingSize}");
+                    throw new InvalidPaddingException($"Invalid ISO10126 padding size: {paddingSize}");
                 break;
 
             default:
-                throw new NotSupportedException($"Padding mode {_paddingMode} is not supported for removal");
+                throw new InvalidPaddingException($"Padding mode {_paddingMode} is not supported for removal");
         }
 
 
         int dataLength = originalLength - paddingSize;
         if (dataLength < 0)
-             throw new ArgumentException("Padding size calculation resulted in negative data length.");
+             throw new InvalidPaddingException("Padding size calculation resulted in negative data length.");
 
         byte[] unpaddedBlock = new byte[dataLength];
         Array.Copy(paddedData, 0, unpaddedBlock, 0, dataLength);
         return unpaddedBlock;
     }
 
-    public async Task<byte[]> EncryptMessageAsync(byte[] message)
+    private byte[] GetPaddedMessage(Memory<byte> message)
     {
-        EncryptionState.Transform = EncryptionStateTransform.Analyzing;
-        
-        List<byte[]> blocks = new List<byte[]>();
-        List<byte> block = new List<byte>(BlockSize);
+        EncryptionState.Transform = EncryptionStateTransform.ApplyingPadding;
 
-        for (int i = 0; i < message.Length; i++)
+        int fullBlocksCount = message.Length / BlockSize;
+        int lastBlockStartIndex = fullBlocksCount * BlockSize;
+        ReadOnlySpan<byte> lastPartSpan = message.Span.Slice(lastBlockStartIndex);
+
+        byte[]? paddedLastBlock = null;
+        int totalSizeInBytes;
+
+        if (lastPartSpan.IsEmpty)
         {
-            block.Add(message[i]);
-            if (block.Count == BlockSize)
+            if (message.Length == 0 && _paddingMode == PaddingMode.Zeros)
             {
-                blocks.Add(block.ToArray());
-                block.Clear();
+                paddedLastBlock = null;
+                totalSizeInBytes = 0;
+            }
+            else if (_paddingMode == PaddingMode.Zeros)
+            {
+                paddedLastBlock = null;
+                totalSizeInBytes = message.Length;
+            }
+            else
+            {
+                paddedLastBlock = ApplyPadding(lastPartSpan);
+                totalSizeInBytes = message.Length + BlockSize;
             }
         }
-
-        byte[] last = ApplyPadding(block.ToArray());
-        if (last.Length > 0) blocks.Add(last);
-        int size = message.Length < BlockSize ? BlockSize : message.Length - (message.Length % BlockSize) + last.Length;
-        
-        EncryptionState.Transform = EncryptionStateTransform.Encrypting;
-        EncryptionState.EncryptedBlocks = 0;
-        EncryptionState.BlocksToEncrypt = blocks.Count;
-        
-        byte[] result = new byte[size];
-        byte[]? prev;
-        
-        BigInteger initialCounter;
-
-        int currentOffset;
-        switch (_cipherMode)
+        else
         {
-            case CipherMode.ECB:
-                IEnumerable<Task<byte[]>> tasks = blocks.Select(b => Task.Run(() =>
-                {
-                    var tmp = EncryptBlock(b);
-                    EncryptionState.EncryptedBlocks += 1;
-                    return tmp;
-                }));
-                byte[][] encryptedBlocks = await Task.WhenAll(tasks);
-                
-                currentOffset = 0;
-                foreach (byte[] encryptedBlock in encryptedBlocks)
-                {
-                    Array.Copy(
-                        sourceArray: encryptedBlock,
-                        sourceIndex: 0,
-                        destinationArray: result,
-                        destinationIndex: currentOffset,
-                        length: encryptedBlock.Length 
-                    );
-                    
-                    currentOffset += encryptedBlock.Length;
-                }
-                break;
-
-            case CipherMode.CBC:
-                if (_iv == null)
-                    throw new ArgumentException($"Setup {nameof(_iv)} before Encryption or change cipher mode");
-
-                prev = EncryptBlock(XorTwoPartsCopy(blocks[0], _iv));
-                currentOffset = 0;
-                Array.Copy(
-                    sourceArray: prev,
-                    sourceIndex: 0,
-                    destinationArray: result,
-                    destinationIndex: currentOffset,
-                    length: prev.Length 
-                );
-                EncryptionState.EncryptedBlocks += 1;
-                currentOffset += prev.Length;
-
-
-                foreach (var b in blocks.Skip(1))
-                {
-                    var encryptedBlock = EncryptBlock(XorTwoPartsCopy(b, prev));
-                    Array.Copy(
-                        sourceArray: encryptedBlock,
-                        sourceIndex: 0,
-                        destinationArray: result,
-                        destinationIndex: currentOffset,
-                        length: encryptedBlock.Length 
-                    );
-                    currentOffset += encryptedBlock.Length;
-                    prev = encryptedBlock;
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-                break;
-
-            case CipherMode.OFB:
-                if (_iv == null)
-                    throw new ArgumentException($"Setup {nameof(_iv)} before Encryption or change cipher mode");
-                
-                byte[] currentKeystream = _iv;
-                byte[]? prevKeystream = null;
-                currentOffset = 0;
-
-                foreach (var b in blocks)
-                {
-                    prevKeystream = EncryptBlock(currentKeystream);
-
-                    var encryptedBlock = XorTwoPartsCopy(prevKeystream, b);
-
-                    Array.Copy(
-                        sourceArray: encryptedBlock,
-                        sourceIndex: 0,
-                        destinationArray: result,
-                        destinationIndex: currentOffset,
-                        length: encryptedBlock.Length
-                    );
-                    currentOffset += encryptedBlock.Length;
-                    currentKeystream = prevKeystream;
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-                
-                break;
-
-            case CipherMode.CFB:
-                if (_iv == null)
-                    throw new ArgumentException($"Setup {nameof(_iv)} before Encryption or change cipher mode");
-
-                prev = XorTwoPartsCopy(EncryptBlock(_iv), blocks[0]);
-                currentOffset = 0;
-                Array.Copy(
-                    sourceArray: prev,
-                    sourceIndex: 0,
-                    destinationArray: result,
-                    destinationIndex: currentOffset,
-                    length: prev.Length 
-                );
-                currentOffset += prev.Length;
-                EncryptionState.EncryptedBlocks += 1;
-
-                foreach (var b in blocks.Skip(1))
-                {
-                    var encryptedBlock = XorTwoPartsCopy(EncryptBlock(prev), b);
-                    Array.Copy(
-                        sourceArray: encryptedBlock,
-                        sourceIndex: 0,
-                        destinationArray: result,
-                        destinationIndex: currentOffset,
-                        length: encryptedBlock.Length 
-                    );
-                    currentOffset += encryptedBlock.Length;
-                    prev = encryptedBlock;
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-
-                break;
-
-            case CipherMode.PCBC:
-                if (_iv == null)
-                    throw new ArgumentException($"Setup {nameof(_iv)} before Encryption or change cipher mode");
-
-                prev = EncryptBlock(XorTwoPartsCopy(blocks[0], _iv));
-                currentOffset = 0;
-                Array.Copy(
-                    sourceArray: prev,
-                    sourceIndex: 0,
-                    destinationArray: result,
-                    destinationIndex: currentOffset,
-                    length: prev.Length 
-                );
-                currentOffset += prev.Length;
-                EncryptionState.EncryptedBlocks += 1;
-
-                for (int i = 1; i < blocks.Count; ++i)
-                {
-                    var encryptedBlock = EncryptBlock(XorTwoPartsCopy(XorTwoPartsCopy(blocks[i - 1], prev), blocks[i]));
-                    Array.Copy(
-                        sourceArray: encryptedBlock,
-                        sourceIndex: 0,
-                        destinationArray: result,
-                        destinationIndex: currentOffset,
-                        length: encryptedBlock.Length 
-                    );
-                    currentOffset += encryptedBlock.Length;
-                    prev = encryptedBlock;
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-
-                break;
-
-            case CipherMode.CTR:
-            case CipherMode.RD:
-                if (_iv == null)
-                    throw new ArgumentException($"Setup {nameof(_iv)} before Encryption or change cipher mode");
-                byte[] init = new byte[_iv.Length + 1];
-                
-                Array.Copy(
-                    sourceArray: _iv,
-                    sourceIndex: 0,
-                    destinationArray: init,
-                    destinationIndex: 1,
-                    length: _iv.Length
-                );
-                
-                initialCounter = new BigInteger(init);
-                int delta = (_cipherMode == CipherMode.RD) ? GetParam<RandomDeltaParameters>().Delta : 1;
-                currentOffset = 0;
-
-                var encryptedBlocksDict = new ConcurrentDictionary<int, byte[]>();
-                
-                Parallel.ForEach(blocks.Select((b, i) => (Block: b, Index: i)), 
-                     (item, ct) =>
-                    {
-                        BigInteger offset = item.Index * delta;
-                        
-                        BigInteger blockCounter = initialCounter + offset;
-                        byte[] counterBytes = blockCounter.ToByteArray();
-                        
-                        if (BitConverter.IsLittleEndian)
-                            Array.Reverse(counterBytes);
-        
-                        Array.Resize(ref counterBytes, BlockSize);
-                        var encryptedCounter = EncryptBlock(counterBytes);
-                        var encryptedBlock = XorTwoPartsCopy(encryptedCounter, item.Block);
-                        encryptedBlocksDict[item.Index] = encryptedBlock;
-                        EncryptionState.EncryptedBlocks += 1;
-                    });
-                
-                foreach (var kvp in encryptedBlocksDict.OrderBy(kv => kv.Key))
-                {
-                    byte[] encryptedBlock = kvp.Value; 
-                    if (encryptedBlock.Length > 0) 
-                    {
-                        Array.Copy(
-                            sourceArray: encryptedBlock,
-                            sourceIndex: 0,
-                            destinationArray: result,
-                            destinationIndex: currentOffset,
-                            length: encryptedBlock.Length
-                        );
-                        currentOffset += encryptedBlock.Length;
-                    }
-                }
-                break;
+            paddedLastBlock = ApplyPadding(lastPartSpan);
+            totalSizeInBytes = lastBlockStartIndex + BlockSize;
         }
-        EncryptionState.Transform = EncryptionStateTransform.Idle;
 
+        byte[] result = new byte[totalSizeInBytes];
+        
+        if (lastBlockStartIndex > 0)
+        {
+            message.Span.Slice(0, lastBlockStartIndex).CopyTo(result);
+        }
+        
+        if (paddedLastBlock != null)
+        {
+            Array.Copy(sourceArray: paddedLastBlock,
+                sourceIndex: 0,
+                destinationArray: result,
+                destinationIndex: lastBlockStartIndex,
+                length: paddedLastBlock.Length);
+        }
         return result;
     }
-    
 
-    public async Task<byte[]> DecryptMessageAsync(byte[] ciphertext)
+    private BigInteger GetInitialCounter()
+    {
+        byte[] init = new byte[_iv.Length + 1];
+                
+        Array.Copy(
+            sourceArray: _iv,
+            sourceIndex: 0,
+            destinationArray: init,
+            destinationIndex: 1,
+            length: _iv.Length
+        );
+                
+        return new BigInteger(init);
+    }
+
+    public async Task<byte[]> EncryptMessageAsync(Memory<byte> message)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
 
-        List<byte[]> blocks = new List<byte[]>();
-        List<byte> block = new List<byte>(BlockSize);
+        var buffer = GetPaddedMessage(message);
 
-        for (int i = 0; i < ciphertext.Length; i++)
-        {
-            block.Add(ciphertext[i]);
-            if (block.Count == BlockSize)
-            {
-                blocks.Add(block.ToArray());
-                block.Clear();
-            }
-        }
-
-        if (block.Count != 0)
-        {
-            throw new ArgumentException("Decryption failed, wrong blocks size");
-        }
-        
-        EncryptionState.Transform = EncryptionStateTransform.Decrypting;
+        EncryptionState.Transform = EncryptionStateTransform.Encrypting;
         EncryptionState.EncryptedBlocks = 0;
-        EncryptionState.BlocksToEncrypt = blocks.Count;
-        
-        List<byte> result = new List<byte>();
-        result.Capacity = ciphertext.Length;
-        
-        byte[]? prev;
+        EncryptionState.BlocksToEncrypt = buffer.Length / BlockSize;
 
-        BigInteger initialCounter;
 
         switch (_cipherMode)
         {
             case CipherMode.ECB:
-                var tasks = blocks.Select(b => Task.Run(() =>
-                {
-                    var tmp = DecryptBlock(b);
-                    EncryptionState.EncryptedBlocks += 1;
-                    return tmp;
-                }));
-                
-                byte[][] decryptedBlocks = await Task.WhenAll(tasks);
-                result.AddRange(decryptedBlocks.SelectMany(b => b));
+                await EcbHandler.EncryptBlocksInPlaceAsync(buffer, this);
                 break;
-
             case CipherMode.CBC:
-                if (_iv == null) throw new ArgumentException(nameof(_iv));
-
-                prev = _iv;
-                foreach (var b in blocks)
-                {
-                    var decrypted = DecryptBlock(b);
-                    var plain = XorTwoPartsCopy(decrypted, prev);
-                    result.AddRange(plain);
-                    prev = b;
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-
+                CbcHandler.EncryptBlocksInPlace(buffer, this, _iv);
                 break;
-
             case CipherMode.OFB:
-                if (_iv == null) throw new ArgumentException(nameof(_iv));
-
-                prev = EncryptBlock(_iv);
-                EncryptionState.EncryptedBlocks += 1;
-                result.AddRange(XorTwoPartsCopy(prev, blocks[0]));
-                
-                foreach (var b in blocks.Skip(1))
-                {
-                    prev = EncryptBlock(prev);
-                    result.AddRange(XorTwoPartsCopy(prev, b));
-                    EncryptionState.EncryptedBlocks += 1;
-                }
-
+                OfbHandler.EncryptBlocksInPlace(buffer, this, _iv);
                 break;
-
             case CipherMode.CFB:
-                prev = _iv ?? throw new ArgumentException(nameof(_iv));
-                
-                foreach (var b in blocks)
-                {
-                    var encrypted = EncryptBlock(prev);
-                    var plain = XorTwoPartsCopy(encrypted, b);
-                    result.AddRange(plain);
-                    prev = b;
-                    EncryptionState.EncryptedBlocks += 1;
-
-                }
-
+                CfbHandler.EncryptBlocksInPlace(buffer, this, _iv);
                 break;
-
             case CipherMode.PCBC:
-                if (_iv == null) throw new ArgumentException(nameof(_iv));
-                
-                var firstBlock = DecryptBlock(blocks[0]);
-                var prevPlain = XorTwoPartsCopy(firstBlock, _iv);
-                EncryptionState.EncryptedBlocks += 1;
-                result.AddRange(prevPlain);
-
-                for (int i = 1; i < blocks.Count; i++)
-                {
-                    var decrypted = DecryptBlock(blocks[i]);
-                    var plain = XorTwoPartsCopy(decrypted, XorTwoPartsCopy(blocks[i - 1], prevPlain));
-                    result.AddRange(plain);
-                    prevPlain = plain;
-                    EncryptionState.EncryptedBlocks += 1;
-
-                }
-
+                PcbcHandler.EncryptBlocksInPlace(buffer, this, _iv);
                 break;
-
             case CipherMode.CTR:
-            case CipherMode.RD:
-                if (_iv == null) throw new ArgumentException(nameof(_iv));
-                
-                byte[] init = new byte[_iv.Length + 1];
-                
-                Array.Copy(
-                    sourceArray: _iv,
-                    sourceIndex: 0,
-                    destinationArray: init,
-                    destinationIndex: 1,
-                    length: _iv.Length
-                );
-                
-                initialCounter = new BigInteger(init);
-                
-                int delta = _cipherMode == CipherMode.RD ? GetParam<RandomDeltaParameters>().Delta : 1;
-
-                var decryptedBlocksDict = new ConcurrentDictionary<int, byte[]>();
-
-                Parallel.ForEach(blocks.Select((b, i) => (Block: b, Index: i)), 
-                    (item, ct) => 
-                    {
-                    int blockIndex = item.Index;
-                    BigInteger offset = blockIndex * delta;
-
-                    byte[] counterBytes = (initialCounter + offset).ToByteArray();
-                    if (BitConverter.IsLittleEndian)
-                        Array.Reverse(counterBytes);
-
-                    Array.Resize(ref counterBytes, BlockSize);
-
-                    var encryptedCounter = EncryptBlock(counterBytes);
-                    var decryptedBlock = XorTwoPartsCopy(encryptedCounter, item.Block);
-                    decryptedBlocksDict[blockIndex] = decryptedBlock;
-                    EncryptionState.EncryptedBlocks += 1;
-
-                });
-                
-                result.AddRange(decryptedBlocksDict
-                    .OrderBy(kv => kv.Key)
-                    .SelectMany(kv => kv.Value));
+                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1);
                 break;
-
-            default:
-                throw new NotSupportedException($"Mode {_cipherMode} not supported");
+            case CipherMode.RD:    
+                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, 
+                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta);
+                break;
         }
-        
-        
-        if (result.Count > 0)
-        {
-            int totalBlocks = result.Count / BlockSize;
-            int lastBlockStart = (totalBlocks - 1) * BlockSize;
-            var lastBlock = result.GetRange(lastBlockStart, BlockSize).ToArray();
-            result.RemoveRange(lastBlockStart, BlockSize);
-            result.AddRange(RemovePadding(lastBlock));
-        }
-
         EncryptionState.Transform = EncryptionStateTransform.Idle;
-        return result.ToArray();
+        return buffer;
     }
     
+    public async Task<byte[]> DecryptMessageAsync(Memory<byte> message)
+    {
+        EncryptionState.Transform = EncryptionStateTransform.Analyzing;
+
+        byte[] bufferRes = new byte[message.Length];
+        message.Span.CopyTo(bufferRes);
+        
+        var buffer = new Memory<byte>(bufferRes);
+
+        EncryptionState.Transform = EncryptionStateTransform.Decrypting;
+        EncryptionState.EncryptedBlocks = 0;
+        EncryptionState.BlocksToEncrypt = buffer.Length / BlockSize;
+
+        switch (_cipherMode)
+        {
+            case CipherMode.ECB:
+                await EcbHandler.DecryptBlocksInPlaceAsync(buffer, this);
+                break;
+            case CipherMode.CBC:
+                CbcHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                break;
+            case CipherMode.OFB:
+                OfbHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                break;
+            case CipherMode.CFB:
+                CfbHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                break;
+            case CipherMode.PCBC:
+                PcbcHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                break;
+            case CipherMode.CTR:
+                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1);
+                break;
+            case CipherMode.RD:    
+                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, 
+                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta);
+                break;
+        }
+        EncryptionState.Transform = EncryptionStateTransform.RemovingPadding;
+
+        byte[] last = RemovePadding(buffer.Slice(buffer.Length - BlockSize, BlockSize).ToArray());
+        int index = buffer.Length - BlockSize < 0 ? 0 : buffer.Length - BlockSize;
+        
+        byte[] result = new byte[index + last.Length];
+        
+        buffer.Slice(0, index).CopyTo(result);
+        last.CopyTo(result.AsSpan(index));
+        
+        EncryptionState.Transform = EncryptionStateTransform.Idle;
+        return result;
+    }
 }

@@ -1,50 +1,54 @@
-﻿namespace Crypota.Symmetric;
-using static SymmetricMath;
+﻿using Crypota.Interfaces;
 
-public enum LastSwap
-{
-    NoSwap = 0,
-    Swap = 1,
-}
+namespace Crypota.Symmetric;
+using static Crypota.SymmetricUtils;
 
-public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation,
-    uint rounds = 16)
+
+
+public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformation transformation)
     : ISymmetricCipher
 {
+    protected uint Rounds { get; init; }
     public byte[]? Key { get; set; }
 
-    private byte[] Network(RoundKey[] keys, byte[] block)
+    private byte[] Network(Memory<byte>[] keys, byte[] block)
     {
         var (left, right) = SplitToTwoParts(block);
         
-        for (int i = 0; i < rounds; i++)
+        for (int i = 0; i < Rounds; i++)
         {
-            var temp = transformation.EncryptionTransformation(right, keys[i]);
-            var newLeft = XorTwoParts(ref temp, left);
+            var originalR = right.ToArray();
             
-            left = right;
-            right = newLeft;
+            transformation.EncryptionTransformation(right, keys[i].Span);
+            SymmetricUtils.XorInPlace(left, right);
+            
+            var nextR = left;
+            left = originalR;
+            right = nextR; 
         }
         return MergeFromTwoParts(right, left);
     }
 
 
-    public virtual byte[] EncryptBlock(byte[] block)
+    public virtual void EncryptBlock(Span<byte> state)
     {
         if (Key is null) throw new ArgumentException("You should set-up key before encryption");
         
-        return Network(keyExtension.GetRoundKeys(Key), block);
+        var tmp = Network(keyExtension.GetRoundKeys(Key), state.ToArray());
+        tmp.CopyTo(state);
     }
 
-    public virtual byte[] DecryptBlock(byte[] block)
+    public virtual void DecryptBlock(Span<byte> state)
     {
         if (Key is null) throw new ArgumentException("You should set-up key before encryption");
         var keys = keyExtension.GetRoundKeys(Key);
         var rev = keys.Reverse().ToArray();
         
-        return Network(rev, block);
+        var tmp = Network(rev, state.ToArray());
+        tmp.CopyTo(state);
     }
 
     public virtual int BlockSize => 0;
     public virtual int KeySize => 0;
+    public EncryptionState? EncryptionState { get; } = null;
 }
