@@ -2,7 +2,7 @@
 
 namespace Crypota.CryptoMath;
 
-public class GaloisFieldTwoPowEight
+public static class GaloisFieldTwoPowEight
 {
     public struct PolynomialInGf(byte k3, byte k2, byte k1, byte k0)
     {
