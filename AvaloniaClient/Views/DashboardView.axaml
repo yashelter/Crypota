@@ -1,0 +1,17 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AvaloniaClient.ViewModels"
+             xmlns:viewModels="clr-namespace:AvaloniaClient.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:DataType="viewModels:DashboardViewModel"
+             x:Class="AvaloniaClient.Views.DashboardView">
+    <Design.DataContext>
+        <viewModels:DashboardViewModel/>
+    </Design.DataContext>
+    <StackPanel Spacing="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Text="Добро пожаловать на главный экран!" FontSize="24" FontWeight="Bold"/>
+        <Button Content="Выйти" Command="{Binding LogoutCommand}" Classes="accent"/>
+    </StackPanel>
+</UserControl>

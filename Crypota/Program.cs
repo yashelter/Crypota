@@ -3,6 +3,8 @@ using System.Numerics;
 using Crypota.PrimalityTests;
 using Crypota.RSA.Examples;
 using Crypota.RSA.HackingTheGate;
+using Crypota.Symmetric;
+using Crypota.Symmetric.Rijndael;
 using static Crypota.CryptoMath.CryptoMath;
 using static Crypota.RSA.HackingTheGate.ChainedFraction;
 using static Crypota.FileUtility;
@@ -12,105 +14,95 @@ namespace Crypota;
 
 class Program
 {
-    static async Task Main(string[] args)
+    static void Main(string[] args)
     {
-        Console.WriteLine("Starting Rijndael implementation benchmark...");
-
         var implementation = new Crypota.Symmetric.Rijndael.Rijndael()
         {
             BlockSizeBits = 128,
             KeySizeBits = 128,
             IrreduciblePolynom = 0x1B
         };
-
-        byte[] key = new byte[implementation.KeySize];
-        byte[] dataBlockBytes = new byte[implementation.BlockSize];
-        byte[] originalDataBlockBytes = new byte[implementation.BlockSize];
         
-        Array.Fill<byte>(key, 0x01);
-        Array.Fill<byte>(dataBlockBytes, 0x02);
+        byte[] key = new byte[implementation.KeySize];
+        byte[] iv = new byte[implementation.BlockSize];
+        
+        string filepath = "C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Input\\1.gif";
+        byte[] message = GetFileInBytes(filepath);
+        long fileSize = message.Length;
+        double fileSizeMB = (double)fileSize / (1024 * 1024);
 
-        dataBlockBytes.CopyTo(originalDataBlockBytes, 0);
+        Console.WriteLine(
+            $"--- Starting Benchmark for Rijndael on file: {Path.GetFileName(filepath)} ({fileSizeMB:F2} MB) ---");
 
-        implementation.Key = key;
+        Stopwatch stopwatch = new Stopwatch();
 
-        Span<byte> dataBlockSpan = dataBlockBytes;
+        var cm = CipherMode.RD;
+        var pm = PaddingMode.PKCS7;
+        
+        Console.WriteLine($"Testing Mode: {cm}, Padding: {pm}");
 
-        Console.WriteLine("Performing initial encrypt/decrypt check...");
+        SymmetricCipher cipher = new SymmetricCipher(key, cm, pm, implementation, iv, 
+            new SymmetricCipher.RandomDeltaParameters()
+        {
+            Delta = 3
+        })
+        {
+            Key = key,
+        };
+
+        byte[] encrypted = null;
+        byte[] decrypted = null;
+        TimeSpan encryptTime = TimeSpan.Zero;
+        TimeSpan decryptTime = TimeSpan.Zero;
+        bool success = false;
+
         try
         {
-            implementation.EncryptBlock(dataBlockSpan);
-            implementation.DecryptBlock(dataBlockSpan);
+            stopwatch.Restart();
 
-            bool ok = true;
-            for (int i = 0; i < implementation.BlockSize; i++)
+            encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
+            stopwatch.Stop();
+            encryptTime = stopwatch.Elapsed;
+
+            stopwatch.Restart();
+            decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+            stopwatch.Stop();
+            decryptTime = stopwatch.Elapsed;
+
+            for (int k = 0; k < message.Length; k++)
             {
-                if (dataBlockBytes[i] != originalDataBlockBytes[i])
+                if (message[k] != decrypted[k])
                 {
-                    ok = false;
-                    break;
+                    Console.WriteLine(
+                        $"ERROR: Data mismatch at index {k} for {cm}/{pm}. Expected: {message[k]}, Got: {decrypted[k]}");
                 }
             }
-            Console.WriteLine($"Initial check result: {(ok ? "OK" : "FAILED!")}");
-            if (!ok)
-            {
-                Console.WriteLine("Benchmark aborted due to failed initial check.");
-                return;
-            }
-            originalDataBlockBytes.CopyTo(dataBlockBytes, 0);
 
+            success = true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error during initial check: {ex.Message}");
-            Console.WriteLine("Benchmark aborted.");
-            return;
+            Console.WriteLine($"  ERROR during {cm}/{pm}: {ex.Message}");
+            success = false;
         }
 
-        
-        int iterations = 1_000_00;
-        long totalBytesProcessed = (long)iterations * implementation.BlockSize;
-        double totalMegabytesProcessed = (double)totalBytesProcessed / (1024 * 1024);
-
-        Console.WriteLine($"Configuration: BlockSize={implementation.BlockSize * 8} bits, KeySize={implementation.KeySize * 8} bits");
-        Console.WriteLine($"Benchmarking with {iterations:N0} iterations...");
-        Console.WriteLine($"Total data to process: {totalMegabytesProcessed:F2} MB");
-        Console.WriteLine("Warming up...");
-
-        for (int i = 0; i < 1000; i++)
+        if (success)
         {
-             implementation.EncryptBlock(dataBlockSpan);
+            double encryptSpeed = encryptTime.TotalSeconds > 0
+                ? fileSizeMB / encryptTime.TotalSeconds
+                : double.PositiveInfinity;
+            double decryptSpeed = decryptTime.TotalSeconds > 0
+                ? fileSizeMB / decryptTime.TotalSeconds
+                : double.PositiveInfinity;
+
+            Console.WriteLine(
+                $"  Encrypt Time: {encryptTime.TotalMilliseconds:F2} ms, Speed: {encryptSpeed:F2} MB/s");
+            Console.WriteLine(
+                $"  Decrypt Time: {decryptTime.TotalMilliseconds:F2} ms, Speed: {decryptSpeed:F2} MB/s");
         }
-        originalDataBlockBytes.CopyTo(dataBlockBytes, 0);
 
-        // 5. Замер шифрования
-        Console.WriteLine("Benchmarking EncryptBlock...");
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        for (int i = 0; i < iterations; i++)
-        {
-            implementation.EncryptBlock(dataBlockSpan);
-        }
-        stopwatch.Stop();
-        TimeSpan encryptElapsed = stopwatch.Elapsed;
-        double encryptSpeed = encryptElapsed.TotalSeconds > 0 ? totalMegabytesProcessed / encryptElapsed.TotalSeconds : 0;
+        Console.WriteLine("------------------------------------");
 
-        Console.WriteLine($"EncryptBlock Time: {encryptElapsed.TotalMilliseconds:F2} ms");
-        Console.WriteLine($"EncryptBlock Speed: {encryptSpeed:F2} MB/s");
-
-
-        Console.WriteLine("Benchmarking DecryptBlock...");
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
-        {
-            implementation.DecryptBlock(dataBlockSpan);
-        }
-        stopwatch.Stop();
-        TimeSpan decryptElapsed = stopwatch.Elapsed;
-        double decryptSpeed = decryptElapsed.TotalSeconds > 0 ? totalMegabytesProcessed / decryptElapsed.TotalSeconds : 0;
-
-        Console.WriteLine($"DecryptBlock Time: {decryptElapsed.TotalMilliseconds:F2} ms");
-        Console.WriteLine($"DecryptBlock Speed: {decryptSpeed:F2} MB/s");
-
-        Console.WriteLine("\nBenchmark finished.");
+        Console.WriteLine($"--- Benchmark for Rijndael on file: {Path.GetFileName(filepath)} finished ---");
     }
 }

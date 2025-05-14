@@ -4,12 +4,12 @@ using static Crypota.CryptoMath.CryptoMath;
 
 namespace Crypota.DiffieHellman;
 
-public class Protocol
+public static class Protocol
 {
     private static double probability = 0.999;
-    private static double bitlen = 3052;
+    private const int Bitlen = 3056;
     
-    public static (BigInteger p, BigInteger q) GeneratePair(int bitlen)
+    public static (BigInteger p, BigInteger q) GeneratePair(int bitlen = Bitlen)
     {
         KeyGenForDh genForDh = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
         BigInteger g = 1, p;
@@ -31,8 +31,6 @@ public class Protocol
                 }
             }
         } while (!great);
-        
-            
         return (g, p);
     }
 

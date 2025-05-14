@@ -1,0 +1,46 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AvaloniaClient.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="400"
+             x:DataType="vm:LoginRegisterViewModel"
+             x:Class="AvaloniaClient.Views.LoginRegisterView">
+    <Design.DataContext>
+        <vm:LoginRegisterViewModel/>
+    </Design.DataContext>
+
+    <Border Padding="20" CornerRadius="10" Background="#FFE0E0E0"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            MinWidth="300">
+        <StackPanel Spacing="15" HorizontalAlignment="Stretch">
+            <!-- Переключатель Вход/Регистрация -->
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                <Button Content="Вход" Command="{Binding ShowLoginTabCommand}"
+                        IsEnabled="{Binding !IsLoginMode}" FontWeight="Bold"/>
+                <Button Content="Регистрация" Command="{Binding ShowRegisterTabCommand}"
+                        IsEnabled="{Binding IsLoginMode}" FontWeight="Bold"/>
+            </StackPanel>
+
+            <TextBlock Text="{Binding LoginModeText}"
+                       FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+            <TextBox Watermark="Логин" Text="{Binding Login, Mode=TwoWay}" />
+            <TextBox Watermark="Пароль" Text="{Binding Password, Mode=TwoWay}" PasswordChar="*"/>
+
+            <!-- Поле "Повторите пароль" только для регистрации -->
+            <TextBox Watermark="Повторите пароль"
+                     Text="{Binding ConfirmPassword, Mode=TwoWay}"
+                     PasswordChar="*"
+                     IsVisible="{Binding !IsLoginMode}"/>
+
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" HorizontalAlignment="Center" TextWrapping="Wrap"/>
+
+            <!-- Кнопка действия -->
+            <Button Name="ActionButton"
+                    Content="{Binding ActionButtonContent}"
+                    Command="{Binding LoginOrRegisterUser}"
+                    HorizontalAlignment="Stretch" Classes="accent"/>
+        </StackPanel>
+    </Border>
+</UserControl>

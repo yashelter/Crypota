@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Crypota.Interfaces;
 using Crypota.Symmetric;
@@ -85,8 +86,10 @@ public class SymmetricCipher : ISymmetricCipher
         _params = additionalParams.ToDictionary(p => p.GetType().Name);
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void EncryptBlock(Span<byte> state) => _implementation.EncryptBlock(state);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void DecryptBlock(Span<byte> state) => _implementation.DecryptBlock(state);
 
 
@@ -96,6 +99,7 @@ public class SymmetricCipher : ISymmetricCipher
     /// </summary>
     /// <param name="inputData">Входные данные (последний, возможно неполный, блок).</param>
     /// <returns>Новый массив байт с добавленными отступами.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte[] ApplyPadding(ReadOnlySpan<byte> inputData)
     {
         EncryptionState.Transform = EncryptionStateTransform.ApplyingPadding;
@@ -151,6 +155,7 @@ public class SymmetricCipher : ISymmetricCipher
     /// <param name="paddedData">Данные с отступами (предполагается, что это последний блок).</param>
     /// <returns>Новый массив байт без отступов.</returns>
     /// <exception cref="ArgumentException">Если данные некорректны или отступы повреждены.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte[] RemovePadding(byte[] paddedData)
     {
         EncryptionState.Transform = EncryptionStateTransform.RemovingPadding;
@@ -223,6 +228,7 @@ public class SymmetricCipher : ISymmetricCipher
         return unpaddedBlock;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte[] GetPaddedMessage(Memory<byte> message)
     {
         EncryptionState.Transform = EncryptionStateTransform.ApplyingPadding;
@@ -291,6 +297,7 @@ public class SymmetricCipher : ISymmetricCipher
         return new BigInteger(init);
     }
 
+    
     public async Task<byte[]> EncryptMessageAsync(Memory<byte> message)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
@@ -330,6 +337,7 @@ public class SymmetricCipher : ISymmetricCipher
         EncryptionState.Transform = EncryptionStateTransform.Idle;
         return buffer;
     }
+    
     
     public async Task<byte[]> DecryptMessageAsync(Memory<byte> message)
     {
