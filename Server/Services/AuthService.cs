@@ -1,50 +1,76 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
 using Grpc.Core;
-using Microsoft.AspNetCore.Identity.Data;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using MongoDB.Driver;
+using Server.Models;
+using StackExchange.Redis;
 using StainsGate;
-using static StainsGate.Authentication;
+
 
 namespace Server.Services;
 
-public class AuthService : AuthenticationBase
+public class AuthService : Authentication.AuthenticationBase
 {
-    private readonly IConfiguration _configuration;
+    private readonly IMongoCollection<User> _users;
+    private readonly IDatabase _cache;
+    private readonly IConfiguration _config;
 
-    public AuthService(IConfiguration configuration)
+    public AuthService(IConfiguration config, IConnectionMultiplexer redis)
     {
-        _configuration = configuration;
+        _config = config;
+        var client = new MongoClient(_config["Mongo:ConnectionString"]); // Создаём клиента MongoDB :contentReference[oaicite:4]{index=4}
+        var db = client.GetDatabase(_config["Mongo:Database"]);
+        _users = db.GetCollection<User>(_config["Mongo:UsersCollection"]);
+        _cache = redis.GetDatabase(); // Получаем базу Redis :contentReference[oaicite:5]{index=5}
     }
 
-    public override Task<AuthResponse> Register(RegisterRequestData request, ServerCallContext context)
+    public override async Task<AuthResponse> Register(RegisterRequestData request, ServerCallContext context)
     {
-        // TODO: save user credentials (e.g., hash password) in persistent store
-        // For demo, skip persistence
+        var exists = await _users.Find(u => u.Username == request.Username).AnyAsync();
+        if (exists) throw new RpcException(new Status(StatusCode.AlreadyExists, "User exists"));
+
+        var user = new User
+        {
+            Username = request.Username,
+            PasswordHash = request.PasswordHash
+        };
+        await _users.InsertOneAsync(user);
+
         var token = GenerateJwt(request.Username);
-        var expiresIn = int.Parse(_configuration["Jwt:ExpiresInSeconds"]);
-        return Task.FromResult(new AuthResponse { Token = token, ExpiresIn = expiresIn });
+        var expire = int.Parse(_config["Jwt:ExpiresInSeconds"]?? 
+                               throw new InvalidOperationException("Not correct settings setup"));
+        await _cache.StringSetAsync(GenerateRedisKey(token), "active", TimeSpan.FromSeconds(expire));
+
+        return new AuthResponse { Token = token, ExpiresIn = expire };
     }
 
-    public override Task<AuthResponse> Login(LoginRequestData request, ServerCallContext context)
+    public override async Task<AuthResponse> Login(LoginRequestData request, ServerCallContext context)
     {
-        // TODO: validate credentials against store
-        // For demo, accept any
+        var user = await _users.Find(u => u.Username == request.Username).FirstOrDefaultAsync();
+        if (user == null || !request.PasswordHash.Equals(user.PasswordHash))
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid credentials"));
+
         var token = GenerateJwt(request.Username);
-        var expiresIn = int.Parse(_configuration["Jwt:ExpiresInSeconds"]);
-        return Task.FromResult(new AuthResponse { Token = token, ExpiresIn = expiresIn });
+        var expire = int.Parse(_config["Jwt:ExpiresInSeconds"]?? 
+                               throw new InvalidOperationException("Not correct settings setup"));
+        await _cache.StringSetAsync(GenerateRedisKey(token), "active", TimeSpan.FromSeconds(expire)); // Храним токен :contentReference[oaicite:10]{index=10}
+
+        return new AuthResponse { Token = token, ExpiresIn = expire };
     }
 
-    public override Task<ValidateResponse> ValidateToken(ValidateRequest request, ServerCallContext context)
+    public override async Task<ValidateResponse> ValidateToken(ValidateRequest req, ServerCallContext ctx)
     {
+        var isActive = await _cache.KeyExistsAsync(GenerateRedisKey(req.Token));
+        if (!isActive) return new ValidateResponse { Valid = false };
+
         var handler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Secret"]);
+        var key = Encoding.UTF8.GetBytes(_config["Jwt:Secret"]?? 
+                                         throw new InvalidOperationException("Not correct settings setup"));
         try
         {
-            var parameters = new TokenValidationParameters
+            var prm = new TokenValidationParameters
             {
                 ValidateIssuer = false,
                 ValidateAudience = false,
@@ -53,30 +79,32 @@ public class AuthService : AuthenticationBase
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             };
-            var principal = handler.ValidateToken(request.Token, parameters, out var validatedToken);
-            var username = principal.Identity.Name;
-            var exp = validatedToken.ValidTo;
-            var expiresIn = (long)(exp - DateTime.UtcNow).TotalSeconds;
-            return Task.FromResult(new ValidateResponse { Valid = true, Username = username, ExpiresIn = expiresIn });
+            var principal = handler.ValidateToken(req.Token, prm, out var vt);
+            var username = principal.Identity!.Name;
+            var expiresIn = (long)(vt.ValidTo - DateTime.UtcNow).TotalSeconds;
+            return new ValidateResponse { Valid = true, Username = username, ExpiresIn = expiresIn };
         }
         catch
         {
-            return Task.FromResult(new ValidateResponse { Valid = false });
+            return new ValidateResponse { Valid = false };
         }
     }
 
+    private static string GenerateRedisKey(string jwt) => $"auth:token:{jwt.Substring(0, 8)}"; // Краткий ключ для Redis
+
     private string GenerateJwt(string username)
     {
-        var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Secret"]);
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var descriptor = new SecurityTokenDescriptor
+        var key = Encoding.UTF8.GetBytes(_config["Jwt:Secret"]?? 
+                                         throw new InvalidOperationException("Not correct settings setup"));
+        var desc = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, username) }),
-            Expires = DateTime.UtcNow.AddSeconds(int.Parse(_configuration["Jwt:ExpiresInSeconds"])),
-            SigningCredentials =
-                new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            Expires = DateTime.UtcNow.AddSeconds(int.Parse(_config["Jwt:ExpiresInSeconds"] ?? 
+                                                           throw new InvalidOperationException("Not correct settings setup"))),
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key),
+                SecurityAlgorithms.HmacSha256)
         };
-        var token = tokenHandler.CreateToken(descriptor);
-        return tokenHandler.WriteToken(token);
+        return new JwtSecurityTokenHandler().WriteToken(
+            new JwtSecurityTokenHandler().CreateToken(desc));
     }
 }

@@ -1,16 +1,28 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
+using AvaloniaClient.Models;
+using AvaloniaClient.Services;
 using AvaloniaClient.ViewModels;
+using Grpc.Core;
 
 namespace AvaloniaClient.ViewModels;
 
-public partial class LoginRegisterViewModel : ViewModelBase 
-    {
-        private readonly Action? _onLoginSuccess;
-        private readonly Action? _showLoginTabAction;
-        private readonly Action? _showRegisterTabAction;
+public partial class LoginRegisterViewModel(
+    Action onLoginSuccess,
+    Action showLoginTabAction,
+    Action showRegisterTabAction,
+    AuthApiClient authApiClient,
+    Auth auth)
+    : ViewModelBase
+{
+        private readonly Action? _onLoginSuccess = onLoginSuccess ?? throw new ArgumentNullException(nameof(onLoginSuccess));
+        private readonly Action? _showLoginTabAction = showLoginTabAction ?? throw new ArgumentNullException(nameof(showLoginTabAction));
+        private readonly Action? _showRegisterTabAction = showRegisterTabAction ?? throw new ArgumentNullException(nameof(showRegisterTabAction));
+        private readonly AuthApiClient _authApiClient = authApiClient ?? throw new ArgumentNullException(nameof(authApiClient));
+        private readonly Auth _auth = auth ?? throw new ArgumentNullException(nameof(auth));
 
         [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(LoginUserCommand))]
@@ -38,36 +50,8 @@ public partial class LoginRegisterViewModel : ViewModelBase
 
         public string LoginModeText => IsLoginMode ? "Вход в систему" : "Регистрация";
         public string ActionButtonContent => IsLoginMode ? "Войти" : "Зарегистрироваться";
-
-
-
-        // Конструктор для использования во время выполнения (runtime)
-        public LoginRegisterViewModel(Action onLoginSuccess, Action showLoginTabAction, Action showRegisterTabAction)
-        {
-            _onLoginSuccess = onLoginSuccess ?? throw new ArgumentNullException(nameof(onLoginSuccess));
-            _showLoginTabAction = showLoginTabAction ?? throw new ArgumentNullException(nameof(showLoginTabAction));
-            _showRegisterTabAction = showRegisterTabAction ?? throw new ArgumentNullException(nameof(showRegisterTabAction));
-        }
-
-        // Конструктор без параметров для XAML-дизайнера
-        public LoginRegisterViewModel()
-        {
-            // Этот конструктор будет вызван дизайнером.
-            // Можно оставить зависимости null или инициализировать заглушками, если это нужно для отображения в дизайнере.
-            // _onLoginSuccess = () => Console.WriteLine("Дизайнер: Успешный вход");
-            // _showLoginTabAction = () => Console.WriteLine("Дизайнер: Показать вкладку входа");
-            // _showRegisterTabAction = () => Console.WriteLine("Дизайнер: Показать вкладку регистрации");
-
-            // Для простоты можно оставить их null, если логика команд это допускает или не используется в дизайнере.
-             _onLoginSuccess = null;
-             _showLoginTabAction = null;
-             _showRegisterTabAction = null;
-
-            // Можно также инициализировать некоторые свойства для лучшего отображения в дизайнере
-            // Login = "TestUser";
-            // ErrorMessage = "Пример ошибки для дизайнера";
-            // IsLoginMode = false; // Например, чтобы протестировать вид регистрации
-        }
+        
+        
 
         [RelayCommand]
         private void ShowLoginTab()
@@ -85,8 +69,8 @@ public partial class LoginRegisterViewModel : ViewModelBase
             _showRegisterTabAction?.Invoke();
         }
 
-        
-        
+    
+    
         [RelayCommand]
         public void LoginOrRegisterUser()
         {
@@ -103,17 +87,27 @@ public partial class LoginRegisterViewModel : ViewModelBase
         private bool CanLoginUser() => !string.IsNullOrWhiteSpace(Login) && !string.IsNullOrWhiteSpace(Password);
         
         [RelayCommand(CanExecute = nameof(CanLoginUser))]
-        private void LoginUser()
+        private async Task LoginUser()
         {
             ErrorMessage = null;
-            if (Login == "admin" && Password == "password")
+            if (Login is null || Password is null || Login.Length < 4 || Password.Length < 4)
             {
-                _onLoginSuccess?.Invoke();
+                ErrorMessage = "Неверные данные";
+                return;
             }
-            else
+            
+            var response = await _authApiClient.LoginAsync(Login, Password);
+            
+            if (response is null)
             {
                 ErrorMessage = "Неверный логин или пароль.";
+                return;
             }
+            
+            await _auth.SaveToken(response.Token);
+            ClearFieldsAndError();
+            
+            _onLoginSuccess?.Invoke();
         }
 
         private bool CanRegisterUser() =>
@@ -123,18 +117,43 @@ public partial class LoginRegisterViewModel : ViewModelBase
             Password == ConfirmPassword;
         
         [RelayCommand(CanExecute = nameof(CanRegisterUser))]
-        private void RegisterUser()
+        private async Task RegisterUser()
         {
             ErrorMessage = null;
+            if (Password == null || ConfirmPassword == null || Login == null)
+            {
+                ErrorMessage = "Необходимо заполнить поля";
+                return;
+            }
+            if (Login.Length < 4)
+            {
+                ErrorMessage = "Логин слишком короткий";
+                return;
+            }
+            if (Password.Length < 4)
+            {
+                ErrorMessage = "Пароль слишком короткий";
+                return;
+            }
+            
             if (Password != ConfirmPassword)
             {
                 ErrorMessage = "Пароли не совпадают.";
                 return;
             }
+            
             Console.WriteLine($"Регистрация: Логин={Login}, Пароль={Password}");
-            IsLoginMode = true;
-            ClearFields();
-            ErrorMessage = "Регистрация успешна! Теперь вы можете войти.";
+
+            var response = await _authApiClient.RegisterAsync(Login, Password);
+            if (response is null)
+            {
+                ErrorMessage = "Логин Занят";
+                return;
+            }
+            await _auth.SaveToken(response.Token);
+            ClearFieldsAndError();
+            
+            _onLoginSuccess?.Invoke();
         }
 
         public void ClearFields()

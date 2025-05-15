@@ -1,0 +1,43 @@
+﻿<!-- Файл: Views/CreateChatDialogView.axaml -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:AvaloniaClient.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="350"
+        x:Class="AvaloniaClient.Views.CreateChatDialogView"
+        x:DataType="vm:CreateChatDialogViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Создать новый чат"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        SystemDecorations="Full" ExtendClientAreaToDecorationsHint="False">
+
+    <Design.DataContext>
+        <vm:CreateChatDialogViewModel/>
+    </Design.DataContext>
+
+    <Border Padding="20">
+        <StackPanel Spacing="15">
+            <TextBlock Text="Настройки нового чата" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/>
+            
+            <TextBlock Text="Алгоритм шифрования:"/>
+            <ComboBox ItemsSource="{Binding EncryptAlgos}"
+                      SelectedItem="{Binding SelectedEncryptAlgo, Mode=TwoWay}"/>
+
+            <TextBlock Text="Режим шифрования:"/>
+            <ComboBox ItemsSource="{Binding EncryptModes}"
+                      SelectedItem="{Binding SelectedEncryptMode, Mode=TwoWay}"/>
+
+            <TextBlock Text="Режим дополнения (Padding):"/>
+            <ComboBox ItemsSource="{Binding PaddingModes}"
+                      SelectedItem="{Binding SelectedPaddingMode, Mode=TwoWay}"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,20,0,0">
+                <Button Content="Создать" Command="{Binding ConfirmCreateCommand}" Classes="accent" IsDefault="True"/>
+                <Button Content="Отмена" Command="{Binding CancelCommand}" IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

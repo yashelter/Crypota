@@ -15,13 +15,13 @@ service HackingGate {
   rpc CloseRoom(RoomPassKey) returns (google.protobuf.Empty);
 
   // Подключить клиента к комнате
-  rpc JoinRoom(RoomPassKey) returns (RoomInfo);
+  rpc JoinRoom(RoomPassKey) returns (google.protobuf.Empty);
 
   // Отключить клиента от комнаты
   rpc LeaveRoom(RoomPassKey) returns (google.protobuf.Empty);
 
   // Обмен параметрами Диффи–Хеллмана
-  rpc ExchangeDhParameters(ExchangeData) returns (stream DiffieHellmanData);
+  rpc ExchangeDhParameters(stream ExchangeData) returns (stream ExchangeData);
 
   // Отправка зашифрованного сообщения в комнату
   rpc SendMessage(Message) returns (MessageAck);
@@ -42,33 +42,14 @@ enum EncryptAlgo {
   RC6     = 1;
 }
 
-enum EncryptMode {
-  OFB = 0;
-  RD  = 1;
-}
-
-enum PaddingMode {
-  ZEROES = 0;
-}
-
 // Ключ комнаты
 message RoomPassKey {
   string chat_id = 1;
 }
 
-// Все параметры комнаты
-message RoomInfo {
-  string chat_id = 1;
-  string owner_username = 2;
-  string creation_time = 3;
-  RoomData settings = 4;
-}
-
 // Параметры при создании комнаты
 message RoomData {
-  EncryptAlgo algo       = 1;
-  EncryptMode cipherMode = 2;
-  PaddingMode padding    = 3;
+  EncryptAlgo encrypt_algo = 1;
 }
 
 // Часть Диффи–Хеллмана
@@ -77,25 +58,10 @@ message ExchangeData {
   bytes  public_part = 2;
 }
 
-message DiffieHellmanData {
-  ExchangeData fromMate = 1;
-  bytes g_value         = 2;
-  bytes p_value         = 3;
-}
-
-
-enum MessageType{
-  MESSAGE = 0;
-  IMAGE   = 1;
-  FILE    = 2;
-}
-
 // Зашифрованное сообщение
 message Message {
-  string chat_id   = 1;
-  bytes  data      = 2;
-  string timestamp = 3;
-  MessageType type = 4;
+  string chat_id = 1;
+  bytes  data    = 2;
 }
 
 // Подтверждение доставки сообщения
