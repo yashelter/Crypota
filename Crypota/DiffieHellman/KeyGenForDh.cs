@@ -48,7 +48,7 @@ public class KeyGenForDh
     }
     
     
-    public BigInteger GeneratePrimaryNumber()
+    public BigInteger GeneratePrimaryNumberDh()
     {
         BigInteger candidate;
         Probability state;
@@ -79,5 +79,34 @@ public class KeyGenForDh
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+    
+    private byte[] GetRandomBytes(int maxBits)
+    {
+        int size =  maxBits / 8 + (maxBits % 8 == 0 ? 0 : 1);
+        byte mask = (byte)(1 << ((maxBits % 8) - 1));
+        byte[] bytes = new byte[size];
+        _rng.GetBytes(bytes);
+        bytes[^1] &= mask;
+            
+        return bytes;
+    }
+
+    public BigInteger GeneratePrimaryNumber()
+    {
+        BigInteger candidate;
+        Probability state;
+        int bits = _bitLength % 8;
+        if (bits == 0) bits = 8;
+        do 
+        {
+            byte[] bytes = GetRandomBytes(_bitLength);
+            bytes[^1] |= (byte) (1 << (bits - 1));
+
+            candidate = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+            state = _primaryTest.PrimaryTest(candidate, _probability);
+        } while (state == Probability.Composite);
+            
+        return candidate;
     }
 }

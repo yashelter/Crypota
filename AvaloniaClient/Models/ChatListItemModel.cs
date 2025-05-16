@@ -2,6 +2,7 @@
 using AvaloniaClient.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StainsGate;
 
 namespace AvaloniaClient.Models;
 
@@ -12,13 +13,15 @@ public partial class ChatListItemModel : ViewModelBase
     [ObservableProperty] private string _lastMessage;
     [ObservableProperty] private DateTime _lastMessageTime;
 
-    // Новые свойства для отображения в контекстном меню
-    [ObservableProperty] private string _ownerName = "Система"; // Пример
-    [ObservableProperty] private DateTime _creationDate = DateTime.UtcNow; // Пример
+    [ObservableProperty] private string _ownerName = "None";
+    [ObservableProperty] private DateTime _creationDate = DateTime.UtcNow;
 
-    // Делегаты для действий, которые будут предоставлены DashboardViewModel
     private readonly Action<ChatListItemModel>? _deleteChatAction;
     private readonly Action<ChatListItemModel>? _requestRemoveUserAction;
+    
+    public EncryptAlgo Algorithm { get; set; }
+    public EncryptMode Mode { get; set; }
+    public PaddingMode ChatPadding { get; set; } 
 
     public IRelayCommand DeleteChatCommand { get; }
     public IRelayCommand RequestRemoveUserCommand { get; }
@@ -28,6 +31,9 @@ public partial class ChatListItemModel : ViewModelBase
         string name,
         string lastMessage,
         DateTime lastMessageTime,
+        EncryptAlgo algorithm,
+        EncryptMode mode,
+        PaddingMode padding,
         Action<ChatListItemModel> deleteChatAction,
         Action<ChatListItemModel> requestRemoveUserAction)
     {
@@ -41,6 +47,10 @@ public partial class ChatListItemModel : ViewModelBase
 
         DeleteChatCommand = new RelayCommand(ExecuteDeleteChat);
         RequestRemoveUserCommand = new RelayCommand(ExecuteRequestRemoveUser);
+        
+        Algorithm = algorithm;
+        Mode = mode;
+        ChatPadding = padding; 
     }
     
 
@@ -55,4 +65,8 @@ public partial class ChatListItemModel : ViewModelBase
         // например, собрать какую-то дополнительную информацию.
         _requestRemoveUserAction?.Invoke(this);
     }
+    
+    public string AlgorithmDisplay => Algorithm.ToString();
+    public string ModeDisplay => Mode.ToString();
+    public string PaddingDisplay => ChatPadding.ToString();
 }

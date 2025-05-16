@@ -7,8 +7,8 @@ namespace Crypota.DiffieHellman;
 
 public static class Protocol
 {
-    private static double probability = 0.99;
-    private const int Bitlen = 4096;
+    private static double probability = 0.999;
+    private const int Bitlen = 2048;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static (BigInteger p, BigInteger g) GeneratePairParallel(int bitlen = Bitlen)
@@ -24,7 +24,7 @@ public static class Protocol
 
             while (!token.IsCancellationRequested)
             {
-                var pCand = gen.GeneratePrimaryNumber();
+                var pCand = gen.GeneratePrimaryNumberDh();
                 var phi = pCand - 1;
                 var q = phi / 2;
 
@@ -49,6 +49,7 @@ public static class Protocol
         var result = first.Result;
 
         cts.Cancel();
+        cts.Dispose();
         return result;
     }
     
@@ -65,7 +66,7 @@ public static class Protocol
         {
             Console.Clear();
 
-            p = genForDh.GeneratePrimaryNumber();
+            p = genForDh.GeneratePrimaryNumberDh();
             var phi = p - 1;
             Console.WriteLine(p);
 
@@ -87,14 +88,36 @@ public static class Protocol
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static BigInteger GeneratePart(BigInteger g, BigInteger secretPrimal, BigInteger p)
+    public static BigInteger GenerateDhKeys(BigInteger g, BigInteger secretPrimal, BigInteger p)
     {
         return BinaryPowerByMod(g, secretPrimal, p);
     }
     
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static BigInteger GenerateSecret(BigInteger a, BigInteger b, BigInteger p)
+    public static BigInteger CalculateSharedSecret(BigInteger a, BigInteger bigB, BigInteger p)
     {
-        return BinaryPowerByMod(a, b, p);
+        return BinaryPowerByMod(bigB, a, p);
+    }
+
+    public static BigInteger GenerateSecret(int bitlen = Bitlen)
+    {
+        KeyGenForDh gen = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
+        return gen.GeneratePrimaryNumber();
+    }
+
+    public static BigInteger GetBigIntegerFromArray(byte[] array)
+    {
+        byte[] init = new byte[array.Length + 1];
+                
+        Array.Copy(
+            sourceArray: array,
+            sourceIndex: 0,
+            destinationArray: init,
+            destinationIndex: 1,
+            length: array.Length
+        );
+                
+        return new BigInteger(init, isUnsigned: true, isBigEndian: false);
     }
 }

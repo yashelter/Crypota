@@ -30,10 +30,13 @@ public partial class DashboardViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedChatMessages))]
+    [NotifyPropertyChangedFor(nameof(SelectedChatIsNull))]
     [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))]
     private ChatListItemModel? _selectedChat;
     
     private HackingGate.HackingGateClient client;
+
+    public bool SelectedChatIsNull => _selectedChat is null;
     
     public ObservableCollection<ChatMessageModel>? SelectedChatMessages
     {
@@ -41,7 +44,7 @@ public partial class DashboardViewModel : ViewModelBase
         {
             if (SelectedChat == null) return null;
             // TODO: загружать из бд
-            return _allMessages.TryGetValue(SelectedChat.Id, out var messages) ? messages : null;
+            return _allMessages.GetValueOrDefault(SelectedChat.Id);
         }
     }
 
@@ -51,6 +54,15 @@ public partial class DashboardViewModel : ViewModelBase
     private string? _newMessageText;
 
     [ObservableProperty] private bool _isOptionsPanelOpen = false;
+    
+    
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToggleSubscriptionButtonText))]
+    private bool _isSubscribedToSelectedChatMessages = false;
+
+    public string ToggleSubscriptionButtonText => IsSubscribedToSelectedChatMessages ? "Отключиться от сообщений" : "Подключиться к сообщениям";
+    
+    private readonly Dictionary<string, ChatSessionContext> _chatSessionContexts = new Dictionary<string, ChatSessionContext>();
 
     public DashboardViewModel(Action onLogout)
     {
@@ -69,6 +81,125 @@ public partial class DashboardViewModel : ViewModelBase
 
     }
     
+    partial void OnSelectedChatChanged(ChatListItemModel? oldValue, ChatListItemModel? newValue)
+    {
+        if (oldValue?.Id != null && _chatSessionContexts.TryGetValue(oldValue.Id, out var oldContext))
+        {
+            if (!(oldContext.MessageReceivingCts?.IsCancellationRequested ?? true))
+            {
+                 oldContext.MessageReceivingCts?.Cancel();
+                 Log.Debug("Подписка на сообщения для чата {ChatId} отменена при смене чата.", oldValue.Id);
+            }
+        }
+
+        if (newValue?.Id != null)
+        {
+            if (!_chatSessionContexts.ContainsKey(newValue.Id))
+            {
+                _chatSessionContexts[newValue.Id] = new ChatSessionContext();
+            }
+            var currentChatContext = _chatSessionContexts[newValue.Id];
+            
+            IsSubscribedToSelectedChatMessages = currentChatContext.MessageReceivingCts != null && !currentChatContext.MessageReceivingCts.IsCancellationRequested;
+        }
+        else
+        {
+            IsSubscribedToSelectedChatMessages = false;
+        }
+
+        OnPropertyChanged(nameof(SelectedChatMessages));
+        SendMessageCommand.NotifyCanExecuteChanged();
+        CopySelectedChatIdCommand.NotifyCanExecuteChanged();
+        ToggleMessageSubscriptionCommand.NotifyCanExecuteChanged();
+        
+        Log.Debug("DashboardViewModel: Выбран чат: {0}", newValue?.Name ?? "Нет");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanToggleMessageSubscription))]
+    private async Task ToggleMessageSubscriptionAsync()
+    {
+        if (SelectedChat == null) return;
+
+        var chatId = SelectedChat.Id;
+        if (!_chatSessionContexts.TryGetValue(chatId, out var context))
+        {
+            context = new ChatSessionContext();
+            _chatSessionContexts[chatId] = context;
+        }
+
+        if (IsSubscribedToSelectedChatMessages)
+        {
+            context.MessageReceivingCts?.Cancel();
+            IsSubscribedToSelectedChatMessages = false;
+            Log.Information("Подписка на сообщения для чата {0} отменена пользователем.", chatId);
+            _toast.ShowSuccessMessageToast($"Отключено от сообщений чата: {SelectedChat.Name}");
+        }
+        else
+        {
+            _toast.ShowSuccessMessageToast($"Подключение к сообщениям чата: {SelectedChat.Name}...");
+            //await EnsureSecureConnectionAndSubscriptionAsync(chatId, context);
+            
+            IsSubscribedToSelectedChatMessages = context.IsDhComplete && (context.MessageReceivingCts != null && !context.MessageReceivingCts.IsCancellationRequested);
+            if(IsSubscribedToSelectedChatMessages)
+            {
+                _toast.ShowSuccessMessageToast($"Подключено к сообщениям чата: {SelectedChat.Name}");
+            }
+            else
+            {
+                _toast.ShowErrorMessageToast($"Не удалось подключиться к сообщениям чата: {SelectedChat.Name}");
+            }
+        }
+    }
+
+    private bool CanToggleMessageSubscription()
+    {
+        return SelectedChat != null;
+    }
+
+
+    [RelayCommand(CanExecute = nameof(CanCopySelectedChatId))]
+    private async Task CopySelectedChatIdAsync()
+    {
+        if (SelectedChat?.Id == null)
+        {
+            Log.Warning("Не удалось скопировать ID чата: чат не выбран.");
+            return;
+        }
+
+        TopLevel? topLevel = null;
+        
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopApp)
+        {
+            topLevel = desktopApp.MainWindow; 
+        }
+
+        if (topLevel == null)
+        {
+            Log.Error("Не удалось получить TopLevel для доступа к буферу обмена.");
+            _toast.ShowErrorMessageToast("Не удалось получить доступ к буферу обмена.");
+            return;
+        }
+        
+        var clipboard = topLevel.Clipboard;
+
+        if (clipboard != null)
+        {
+            await clipboard.SetTextAsync(SelectedChat.Id);
+            Log.Information("ID чата {ChatId} скопирован в буфер обмена.", SelectedChat.Id);
+            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Name}' скопирован");
+        }
+        else
+        {
+            Log.Warning("Не удалось получить доступ к буферу обмена (clipboard is null).");
+            _toast.ShowErrorMessageToast("Буфер обмена недоступен.");
+        }
+    }
+    
+    
+    private bool CanCopySelectedChatId()
+    {
+        return SelectedChat != null && !string.IsNullOrEmpty(SelectedChat.Id);
+    }
 
     [RelayCommand]
     private void Logout()
@@ -144,6 +275,9 @@ public partial class DashboardViewModel : ViewModelBase
             room.ChatId,
             "Чат создан, нет сообщений",
             DateTime.Now,
+            result.SelectedEncryptAlgo,
+            result.SelectedEncryptMode,
+            result.SelectedPaddingMode,
             DeleteChat,
             RequestRemoveUserFromChat
         )
@@ -204,6 +338,9 @@ public partial class DashboardViewModel : ViewModelBase
                     $"{chatIdToJoin}",
                     "Вы присоединились к чату.",
                     DateTime.Now,
+                    room.Settings.Algo,
+                    room.Settings.CipherMode,
+                    room.Settings.Padding,
                     DeleteChat,
                     RequestRemoveUserFromChat
                 )
@@ -244,8 +381,6 @@ public partial class DashboardViewModel : ViewModelBase
         var messageContent = NewMessageText!.Trim();
         var newMessage = new ChatMessageModel("Я", messageContent, DateTime.Now, true);
         
-        // SelectedChatMessages уже является ObservableCollection, поэтому добавление в нее
-        // автоматически обновит UI для текущего списка сообщений.
         SelectedChatMessages.Add(newMessage);
 
         SelectedChat.LastMessage = messageContent;
@@ -260,25 +395,7 @@ public partial class DashboardViewModel : ViewModelBase
     {
         Log.Information("DashboardViewModel: Запрос выбора файла (логика не реализована).");
     }
-
-    // Этот метод вызывается автоматически при изменении SelectedChat
-    // благодаря атрибуту [ObservableProperty] и [NotifyPropertyChangedFor]
-    partial void OnSelectedChatChanged(ChatListItemModel? oldValue, ChatListItemModel? newValue)
-    {
-        // OnPropertyChanged(nameof(SelectedChatMessages)); // Это уже указано в [NotifyPropertyChangedFor(nameof(SelectedChatMessages))]
-        // SendMessageCommand.NotifyCanExecuteChanged();     // Это уже указано в [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))] для SelectedChat
-        
-        // Однако, CanSendMessage зависит еще и от SelectedChatMessages, которое может быть null
-        // если для нового чата нет записи в _allMessages (хотя по текущей логике всегда есть).
-        // На всякий случай, можно явно обновить состояние команды здесь, если SelectedChatMessages меняется.
-        if ( (oldValue != null && _allMessages.ContainsKey(oldValue.Id)) != (newValue != null && _allMessages.ContainsKey(newValue.Id)) )
-        {
-             OnPropertyChanged(nameof(SelectedChatMessages)); // Убедимся, что свойство обновилось
-        }
-        SendMessageCommand.NotifyCanExecuteChanged(); // Убедимся, что состояние кнопки обновилось
-        
-        Log.Debug("DashboardViewModel: Выбран чат: {ChatName}", newValue?.Name ?? "Нет");
-    }
+    
     
      private void DeleteChat(ChatListItemModel chatToDelete)
     {
@@ -305,7 +422,7 @@ public partial class DashboardViewModel : ViewModelBase
         Log.Information("DashboardViewModel: Чат '{ChatName}' удален из списка.", chatToDelete.Name);
     }
 
-    // Метод для инициации удаления пользователя из чата
+
     private void RequestRemoveUserFromChat(ChatListItemModel chatContext)
     {
         if (chatContext == null) return;

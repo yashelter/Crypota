@@ -11,7 +11,7 @@ public enum CipherMode { ECB = 2, CBC = 3, OFB = 4, PCBC = 5, CTR = 1, RD = 0, C
 
 public enum PaddingMode { Zeros = 3, ANSIX923 = 1, PKCS7 = 2, ISO10126 = 0 }
 
-public class SymmetricCipher : ISymmetricCipher
+public class SymmetricCipherWrapper : ISymmetricCipher
 {
     private byte[]? _key;
 
@@ -58,7 +58,7 @@ public class SymmetricCipher : ISymmetricCipher
     }
 
 
-    public SymmetricCipher(
+    public SymmetricCipherWrapper(
         byte[] key,
         CipherMode mode,
         PaddingMode padding,

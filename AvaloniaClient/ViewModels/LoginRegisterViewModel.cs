@@ -52,7 +52,6 @@ public partial class LoginRegisterViewModel(
         public string ActionButtonContent => IsLoginMode ? "Войти" : "Зарегистрироваться";
         
         
-
         [RelayCommand]
         private void ShowLoginTab()
         {

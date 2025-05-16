@@ -175,8 +175,7 @@ public class HackingGateService : HackingGate.HackingGateBase
 
 
     // Unary request, server streaming DiffieHellmanData
-    public override async Task ExchangeDhParameters(ExchangeData request, 
-        IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
+    public override async Task ExchangeDhParameters(ExchangeData request, IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
     {
         var list = _dhContexts.GetOrAdd(request.ChatId, _ => new List<DhContext>());
         lock (list)

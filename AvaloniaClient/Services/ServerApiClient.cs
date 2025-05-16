@@ -70,15 +70,13 @@ public class ServerApiClient : IDisposable // Добавляем IDisposable
 
         if (disposing)
         {
-            // Освобождаем управляемые ресурсы, в данном случае GrpcChannel
             _channel?.Dispose();
         }
 
         _disposed = true;
     }
 
-    // Деструктор (финализатор) на случай, если Dispose не был вызван явно
-    // Хотя для синглтона, живущего все приложение, это менее вероятно
+
     ~ServerApiClient()
     {
         Dispose(false);

@@ -4,7 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AvaloniaClient.ViewModels"
              xmlns:converters="using:AvaloniaClient.Converters"
-             xmlns:models="clr-namespace:AvaloniaClient.Models" 
+             xmlns:models="using:AvaloniaClient.Models" 
              xmlns:controls="clr-namespace:Avalonia.Notification.Controls;assembly=Notification.Avalonia"
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
              x:DataType="vm:DashboardViewModel"
@@ -20,27 +20,28 @@
     </Design.DataContext>
 
     <Grid ColumnDefinitions="1*,3,3*">
-        <!-- Левая панель: Список чатов и кнопка опций -->
+        <!-- Левая панель -->
         <DockPanel Grid.Column="0">
-            <!-- ... (содержимое левой панели без изменений) ... -->
             <Border DockPanel.Dock="Top" Padding="5" BorderThickness="0,0,0,1" BorderBrush="LightGray">
                 <Button Content="Меню" Command="{Binding ToggleOptionsPanelCommand}" HorizontalAlignment="Stretch"/>
             </Border>
             <Border DockPanel.Dock="Top"
                     BorderThickness="0,0,0,1" BorderBrush="LightGray"
-                    MaxHeight="200" Padding="10"
+                    MaxHeight="250" Padding="10"
                     IsVisible="{Binding IsOptionsPanelOpen}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="Опции чата" FontWeight="Bold" HorizontalAlignment="Center"/>
                     <Button Content="Создать чат" Command="{Binding CreateChatCommand}" HorizontalAlignment="Stretch"/>
                     <Button Content="Присоединиться к чату" Command="{Binding JoinChatCommand}" HorizontalAlignment="Stretch"/>
+                    <Separator Margin="0,5"/>
+                    <Button Content="Выход из приложения" Command="{Binding LogoutCommand}" HorizontalAlignment="Stretch" Foreground="Red" FontWeight="Bold"/>
                 </StackPanel>
             </Border>
             <ListBox ItemsSource="{Binding ChatList}"
                      SelectedItem="{Binding SelectedChat, Mode=TwoWay}"
                      ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListBox.ItemTemplate>
-                    <DataTemplate DataType="models:ChatListItemModel"> <!-- Убедитесь, что ChatListItemModel - это ваша ViewModel/Model для элементов списка -->
+                    <DataTemplate DataType="models:ChatListItemModel">
                         <Border Padding="10" BorderThickness="0,0,0,1" BorderBrush="#EEE" Background="Transparent">
                             <Border.ContextMenu>
                                 <ContextMenu>
@@ -63,6 +64,32 @@
                                         </MenuItem.Header>
                                     </MenuItem>
                                     <Separator/>
+                                    <MenuItem Header="Шифрование" IsEnabled="False" FontWeight="SemiBold"/>
+                                    <MenuItem IsEnabled="False">
+                                         <MenuItem.Header>
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="15,0,0,0">
+                                                <TextBlock Text="Алгоритм:" FontWeight="Normal"/>
+                                                <TextBlock Text="{Binding AlgorithmDisplay}"/>
+                                            </StackPanel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <MenuItem IsEnabled="False">
+                                        <MenuItem.Header>
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="15,0,0,0">
+                                                <TextBlock Text="Режим:" FontWeight="Normal"/>
+                                                <TextBlock Text="{Binding ModeDisplay}"/>
+                                            </StackPanel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <MenuItem IsEnabled="False">
+                                        <MenuItem.Header>
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="15,0,0,0">
+                                                <TextBlock Text="Набивка:" FontWeight="Normal"/>
+                                                <TextBlock Text="{Binding PaddingDisplay}"/>
+                                            </StackPanel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <Separator/>
                                     <MenuItem Header="Удалить пользователя из чата..." Command="{Binding RequestRemoveUserCommand}"/>
                                     <Separator/>
                                     <MenuItem Header="Удалить чат" Command="{Binding DeleteChatCommand}" Foreground="Red"/>
@@ -79,14 +106,26 @@
             </ListBox>
         </DockPanel>
 
-        <!-- Разделитель -->
         <GridSplitter Grid.Column="1" Width="3" Background="LightGray" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns"/>
 
-        <!-- Правая панель (контент чата) -->
-        <DockPanel Grid.Column="2" IsVisible="{Binding SelectedChat}"> 
+        <DockPanel Grid.Column="2" IsVisible="{Binding !SelectedChatIsNull}">
             <Border DockPanel.Dock="Top" Padding="10" Background="#F0F0F0">
-                <TextBlock Text="{Binding SelectedChat.Name, FallbackValue='Выберите чат'}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                <Grid ColumnDefinitions="Auto,*,Auto"> 
+                    <Button Grid.Column="0" Command="{Binding CopySelectedChatIdCommand}" ToolTip.Tip="Копировать ID чата"
+                            Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding SelectedChat.Name, FallbackValue='Выберите чат'}" 
+                                   FontSize="16" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center"/>
+                    </Button>
+                    
+                    <TextBlock Grid.Column="1"/>
+                    <Button Grid.Column="2" 
+                            Content="{Binding ToggleSubscriptionButtonText}" 
+                            Command="{Binding ToggleMessageSubscriptionCommand}"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Padding="8,4" Margin="5,0"/>
+                </Grid>
             </Border>
+
             <Border DockPanel.Dock="Bottom" Padding="10" BorderThickness="0,1,0,0" BorderBrush="LightGray">
                 <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto" VerticalAlignment="Bottom">
                     <TextBox Grid.Row="0" Grid.Column="0"
@@ -102,7 +141,7 @@
             <ScrollViewer Name="MessagesScrollViewer" VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding SelectedChatMessages}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="models:ChatMessageModel"> <!-- Убедитесь, что ChatMessageModel - это ваша ViewModel/Model для сообщений -->
+                        <DataTemplate DataType="models:ChatMessageModel"> 
                             <Border MaxWidth="400" Padding="8,5" Margin="5" CornerRadius="5"
                                     HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}, ConverterParameter=Right}">
                                 <Border.Background>
@@ -130,13 +169,12 @@
         <TextBlock Grid.Column="2" Text="Выберите или создайте чат"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    FontSize="18" Foreground="Gray"
-                   IsVisible="{Binding SelectedChat }"/> 
+                   IsVisible="{Binding SelectedChatIsNull}"/> 
 
-        <controls:NotificationMessageContainer Grid.Column="2"
-                                               Manager="{Binding Manager}"
-                                               HorizontalAlignment="Center" 
-                                               VerticalAlignment="Center"
-                                               ZIndex="100" /> 
-
+        <controls:NotificationMessageContainer Grid.Column="2" Manager="{Binding Manager}"
+                                               HorizontalAlignment="Right" 
+                                               VerticalAlignment="Bottom"
+                                               Margin="15" 
+                                               ZIndex="999"/> 
     </Grid>
 </UserControl>

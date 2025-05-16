@@ -29,7 +29,7 @@ public abstract class Benchmark
             {
                 TestContext.WriteLine($"Testing Mode: {cm}, Padding: {pm}");
                 
-                SymmetricCipher cipher = new SymmetricCipher(key, cm, pm, implementation, iv)
+                SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper(key, cm, pm, implementation, iv)
                 {
                     Key = key
                 };
@@ -44,12 +44,12 @@ public abstract class Benchmark
                 {
                     stopwatch.Restart();
 
-                    encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
+                    encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
                     stopwatch.Stop();
                     encryptTime = stopwatch.Elapsed;
 
                     stopwatch.Restart();
-                    decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+                    decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
                     stopwatch.Stop();
                     decryptTime = stopwatch.Elapsed;
 
@@ -103,8 +103,8 @@ public abstract class Benchmark
         
         TestContext.WriteLine($"Testing Mode: {cm}, Padding: {pm}");
 
-        SymmetricCipher cipher = new SymmetricCipher(key, cm, pm, implementation, iv, 
-            new SymmetricCipher.RandomDeltaParameters()
+        SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper(key, cm, pm, implementation, iv, 
+            new SymmetricCipherWrapper.RandomDeltaParameters()
         {
             Delta = 3
         })
@@ -122,12 +122,12 @@ public abstract class Benchmark
         {
             stopwatch.Restart();
 
-            encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
+            encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
             stopwatch.Stop();
             encryptTime = stopwatch.Elapsed;
 
             stopwatch.Restart();
-            decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+            decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
             stopwatch.Stop();
             decryptTime = stopwatch.Elapsed;
 

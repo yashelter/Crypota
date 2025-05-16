@@ -65,4 +65,8 @@
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
     </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Crypota\Crypota.csproj" />
+    </ItemGroup>
 </Project>
