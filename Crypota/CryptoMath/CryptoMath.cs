@@ -1,10 +1,11 @@
 ﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Crypota.CryptoMath;
 
 public static partial class CryptoMath
 {
-    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger Gcd(BigInteger a, BigInteger b)
     {
         if (a == BigInteger.Zero)
@@ -15,7 +16,7 @@ public static partial class CryptoMath
         return d;
     }
     
-    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger Gcd(BigInteger a, BigInteger b, ref BigInteger x, ref BigInteger y)
     {
         if (a == BigInteger.Zero)
@@ -33,6 +34,7 @@ public static partial class CryptoMath
         return d;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger GcdIterative(BigInteger a, BigInteger b, out BigInteger x, out BigInteger y)
     {
         if (a < 0)
@@ -66,7 +68,8 @@ public static partial class CryptoMath
         y = y0;
         return b;
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger Gcd(BigInteger a, BigInteger b, out List<BigInteger> coefficients)
     {
         coefficients = [];
@@ -83,7 +86,7 @@ public static partial class CryptoMath
         return a; 
     }
 
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger BinaryPower(BigInteger a, BigInteger power)
     {
         BigInteger res = BigInteger.One;
@@ -101,6 +104,7 @@ public static partial class CryptoMath
         return res;
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger BinaryPowerByMod(BigInteger a, BigInteger power, in BigInteger mod)
     {
         BigInteger res = BigInteger.One;
@@ -118,8 +122,7 @@ public static partial class CryptoMath
         return res % mod;
     }
     
-    
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger LegendreSymbol(BigInteger a, BigInteger p)
     {
         if (p < 3 || p.IsEven)
@@ -215,6 +218,7 @@ public static partial class CryptoMath
     }
     
     // метод Ньютона-Рафсона
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static BigInteger Sqrt(BigInteger n)
     {
         if (n < 0)
@@ -234,7 +238,8 @@ public static partial class CryptoMath
         
         return x;
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static (BigInteger? x1, BigInteger? x2) SolveQuadrantic(BigInteger b, BigInteger c)
     {
         BigInteger d = b * b - 4 * c;

@@ -5,11 +5,16 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <LangVersion>13</LangVersion>
+        <Optimize>true</Optimize>
+        <PlatformTarget>x64</PlatformTarget>
+        <TieredPGO>true</TieredPGO>
+        <PublishReadyToRun>true</PublishReadyToRun>
     </PropertyGroup>
 
     <ItemGroup>
-        <Protobuf Include="Protos\auth.proto" GrpcServices="Server" />
-        <Protobuf Include="Protos\hacking.proto" GrpcServices="Server" />
+        <Protobuf Include="..\Protos\auth.proto" GrpcServices="Server" />
+        <Protobuf Include="..\Protos\hacking.proto" GrpcServices="Server" />
     </ItemGroup>
 
     <ItemGroup>
@@ -31,6 +36,10 @@
       <Content Include="..\.dockerignore">
         <Link>.dockerignore</Link>
       </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Crypota\Crypota.csproj" />
     </ItemGroup>
 
 </Project>

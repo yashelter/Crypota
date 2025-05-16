@@ -42,7 +42,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Protobuf Include="Proto\auth.proto">
+      <Protobuf Include="..\Protos\auth.proto">
         <GrpcServices>Client</GrpcServices>
         <Access>Public</Access>
         <ProtoCompile>True</ProtoCompile>
@@ -50,7 +50,7 @@
         <OutputDir>obj\Debug\net9.0\</OutputDir>
         <Generator>MSBuild:Compile</Generator>
       </Protobuf>
-      <Protobuf Include="Proto\hacking.proto">
+      <Protobuf Include="..\Protos\hacking.proto">
         <GrpcServices>Client</GrpcServices>
         <Access>Public</Access>
         <ProtoCompile>True</ProtoCompile>

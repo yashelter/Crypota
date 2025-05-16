@@ -26,6 +26,8 @@ public partial class DashboardViewModel : ViewModelBase
 
     public INotificationMessageManager Manager { get; } = new NotificationMessageManager();
 
+    private ToastManager _toast;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedChatMessages))]
     [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))]
@@ -56,6 +58,7 @@ public partial class DashboardViewModel : ViewModelBase
         _onLogout = onLogout ?? throw new ArgumentNullException(nameof(onLogout));
         _chatList = new ObservableCollection<ChatListItemModel>();
         _allMessages = new Dictionary<string, ObservableCollection<ChatMessageModel>>();
+        _toast = new ToastManager(Manager);
         Log.Information("DashboardViewModel: Экземпляр создан.");
         LoadData();
     }
@@ -65,6 +68,7 @@ public partial class DashboardViewModel : ViewModelBase
     {
 
     }
+    
 
     [RelayCommand]
     private void Logout()
@@ -105,14 +109,7 @@ public partial class DashboardViewModel : ViewModelBase
         if (!dialogSuccessful || dialogView.DialogResultData == null)
         {
             Log.Information("DashboardViewModel: Пользователь отменил создание чата.");
-            Manager?.CreateMessage()
-                .Accent("#D32F2F")
-                .Animates(true)
-                .Background("#333")
-                .HasBadge("Отмена")
-                .HasMessage("Создание чата отменено.")
-                .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-                .Queue();
+            _toast.ShowErrorMessageToast("Создание чата отменено.");
             return;
         }
 
@@ -138,17 +135,9 @@ public partial class DashboardViewModel : ViewModelBase
 
         if (room == null)
         {
-            Manager?.CreateMessage()
-                .Accent("#D32F2F")
-                .Animates(true)
-                .Background("#333")
-                .HasBadge("Отмена")
-                .HasMessage("Создание чата не удалось.")
-                .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-                .Queue();
+            _toast.ShowErrorMessageToast("Создание чата не удалось");
             return;
         }
-        
 
         var newChat = new ChatListItemModel(
             room.ChatId,
@@ -169,19 +158,8 @@ public partial class DashboardViewModel : ViewModelBase
             _allMessages[newChat.Id] = new ObservableCollection<ChatMessageModel>();
         }
 
-
         SelectedChat = newChat;
-
-        Manager?.CreateMessage()
-            .Accent("#1751C3")
-            .Animates(true)
-            .Background("#333")
-            .HasBadge("Успех")
-            .HasMessage($"Чат успешно создан!")
-            .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-            .Queue();
-        Log.Information("DashboardViewModel: Создан чат '{ChatName}'.");
-
+        _toast.ShowSuccessMessageToast("Чат успешно создан");
     }
 
     [RelayCommand]
@@ -207,14 +185,8 @@ public partial class DashboardViewModel : ViewModelBase
         if (!dialogSuccessful || string.IsNullOrWhiteSpace(chatIdToJoin)) 
         {
             Log.Information("DashboardViewModel: Пользователь отменил подключение к чату.");
-            Manager?.CreateMessage()
-                .Accent("#D32F2F")
-                .Animates(true)
-                .Background("#333")
-                .HasBadge("Отмена")
-                .HasMessage("Подключение к чату отменено.")
-                .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-                .Queue();
+            
+            _toast.ShowErrorMessageToast("Подключение к чату отменено.");
             return;
         }
 
@@ -247,29 +219,14 @@ public partial class DashboardViewModel : ViewModelBase
             }
 
             SelectedChat = newJoinedChat;
-            Log.Information("DashboardViewModel: Успешно (локально) присоединились и добавили чат: {ChatId}",
+            Log.Information("DashboardViewModel: Успешно (локально) присоединились и добавили чат: {0}",
                 chatIdToJoin);
-            Manager?.CreateMessage()
-                .Accent("#1751C3")
-                .Animates(true)
-                .Background("#333")
-                .HasBadge("Успех")
-                .HasMessage($"Успешное присоединение к чату")
-                .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-                .Queue();
-
+            _toast.ShowSuccessMessageToast("Успешное присоединение к чату");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "DashboardViewModel: Ошибка при попытке присоединения к чату {ChatId}", chatIdToJoin);
-            Manager?.CreateMessage()
-                .Accent("#D32F2F")
-                .Animates(true)
-                .Background("#333")
-                .HasBadge("Отмена")
-                .HasMessage("Подключение к чату отменено.")
-                .Dismiss().WithDelay(TimeSpan.FromSeconds(3))
-                .Queue(); 
+            Log.Error(ex, "DashboardViewModel: Ошибка при попытке присоединения к чату {0}", chatIdToJoin);
+            _toast.ShowErrorMessageToast("Подключение к чату отменено.");
         }
     }
 

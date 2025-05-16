@@ -8,6 +8,7 @@ using Crypota.Symmetric.Rijndael;
 using static Crypota.CryptoMath.CryptoMath;
 using static Crypota.RSA.HackingTheGate.ChainedFraction;
 using static Crypota.FileUtility;
+using static Crypota.DiffieHellman.Protocol;
 
 namespace Crypota;
 
@@ -16,16 +17,24 @@ class Program
 {
     static void Main(string[] args)
     {
-        var implementation = new Crypota.Symmetric.Rijndael.Rijndael()
+
+        var (p, g) = GeneratePairParallel();
+        
+        Console.WriteLine(p.ToString());
+        Console.WriteLine();
+        Console.WriteLine();
+        Console.WriteLine(g.ToString());
+        
+        /*var implementation = new Crypota.Symmetric.Rijndael.Rijndael()
         {
             BlockSizeBits = 128,
             KeySizeBits = 128,
             IrreduciblePolynom = 0x1B
         };
-        
+
         byte[] key = new byte[implementation.KeySize];
         byte[] iv = new byte[implementation.BlockSize];
-        
+
         string filepath = "C:\\Users\\yashelter\\Desktop\\Crypota\\UnitTests\\Input\\1.gif";
         byte[] message = GetFileInBytes(filepath);
         long fileSize = message.Length;
@@ -38,10 +47,10 @@ class Program
 
         var cm = CipherMode.RD;
         var pm = PaddingMode.PKCS7;
-        
+
         Console.WriteLine($"Testing Mode: {cm}, Padding: {pm}");
 
-        SymmetricCipher cipher = new SymmetricCipher(key, cm, pm, implementation, iv, 
+        SymmetricCipher cipher = new SymmetricCipher(key, cm, pm, implementation, iv,
             new SymmetricCipher.RandomDeltaParameters()
         {
             Delta = 3
@@ -103,6 +112,6 @@ class Program
 
         Console.WriteLine("------------------------------------");
 
-        Console.WriteLine($"--- Benchmark for Rijndael on file: {Path.GetFileName(filepath)} finished ---");
+        Console.WriteLine($"--- Benchmark for Rijndael on file: {Path.GetFileName(filepath)} finished ---");*/
     }
 }

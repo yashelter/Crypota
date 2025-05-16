@@ -1,19 +1,15 @@
-﻿using System.Collections.Concurrent;
-using System.Numerics;
+﻿using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Crypota.Interfaces;
-using Crypota.Symmetric;
 using Crypota.Symmetric.Exceptions;
 using Crypota.Symmetric.Handlers;
 
 namespace Crypota.Symmetric;
 
-using static Crypota.SymmetricUtils;
+public enum CipherMode { ECB = 2, CBC = 3, OFB = 4, PCBC = 5, CTR = 1, RD = 0, CFB = 6 }
 
-public enum CipherMode { ECB, CBC, OFB, PCBC, CTR, RD, CFB }
-
-public enum PaddingMode { Zeros, ANSIX923, PKCS7, ISO10126 }
+public enum PaddingMode { Zeros = 3, ANSIX923 = 1, PKCS7 = 2, ISO10126 = 0 }
 
 public class SymmetricCipher : ISymmetricCipher
 {

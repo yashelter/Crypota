@@ -8,6 +8,7 @@ using Google.Protobuf.WellKnownTypes;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using Server.Models;
 using StainsGate;
 
 namespace Server.Services;
@@ -49,7 +50,7 @@ public class Subscriber
 public class DhContext
 {
     public ExchangeData Data { get; set; }
-    public IServerStreamWriter<DiffieHellmanData> Stream { get; set; }
+    public IServerStreamWriter<ExchangeData> Stream { get; set; }
     public string Peer { get; set; }
 }
 
@@ -57,6 +58,8 @@ public class HackingGateService : HackingGate.HackingGateBase
 {
     private readonly ILogger<HackingGateService> _logger;
     private readonly IMongoCollection<Room> _rooms;
+    private readonly IFileStorage _fileStorage;
+    private readonly IConstraint _constraint;
 
     // message subscribers
     private readonly ConcurrentDictionary<string, ConcurrentBag<Subscriber>> _subscribers =
@@ -66,7 +69,8 @@ public class HackingGateService : HackingGate.HackingGateBase
     private readonly ConcurrentDictionary<string, List<DhContext>> _dhContexts =
         new ConcurrentDictionary<string, List<DhContext>>();
 
-    public HackingGateService(IConfiguration config, ILogger<HackingGateService> logger)
+    public HackingGateService(IConfiguration config, ILogger<HackingGateService> logger, 
+        IFileStorage fileStorage, IConstraint constraint)
     {
         var settings = config.GetSection("Mongo").Get<MongoSettings>();
         if (settings == null) throw new ArgumentNullException(nameof(config));
@@ -74,11 +78,13 @@ public class HackingGateService : HackingGate.HackingGateBase
         var db = client.GetDatabase(settings.Database);
         _rooms = db.GetCollection<Room>(settings.RoomsCollection);
         _logger = logger;
+        _fileStorage = fileStorage;
+        _constraint = constraint;
     }
 
     public override async Task<RoomPassKey> CreateRoom(RoomData request, ServerCallContext context)
     {
-        _logger.LogInformation("Creating room  {algo}, {mode}, {padding}", request.Algo.ToString(), request.CipherMode.ToString(), request.Padding.ToString());
+        _logger.LogInformation("Creating room  {0}, {1}, {2}", request.Algo.ToString(), request.CipherMode.ToString(), request.Padding.ToString());
         if (request == null) throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid room data"));
         var room = new Room
         {
@@ -96,7 +102,7 @@ public class HackingGateService : HackingGate.HackingGateBase
 
     public override async Task<Empty> CloseRoom(RoomPassKey request, ServerCallContext context)
     {
-        _logger.LogInformation("Closing room {id}", request.ChatId);
+        _logger.LogInformation("Closing room {0}", request.ChatId);
 
         await _rooms.DeleteOneAsync(r => r.ChatId == request.ChatId);
         _subscribers.TryRemove(request.ChatId, out _);
@@ -111,7 +117,7 @@ public class HackingGateService : HackingGate.HackingGateBase
 
         if (room == null)
         {
-            _logger.LogWarning("JoinRoom: Room not found with ChatId {ChatId}", request.ChatId);
+            _logger.LogWarning("JoinRoom: Room not found with ChatId {0}", request.ChatId);
             throw new RpcException(new Status(StatusCode.NotFound, "Room not found"));
         }
         
@@ -154,10 +160,24 @@ public class HackingGateService : HackingGate.HackingGateBase
         return new Empty();
     }
 
-    // Unary request, server streaming DiffieHellmanData
-    public override async Task ExchangeDhParameters(ExchangeData request, IServerStreamWriter<DiffieHellmanData> responseStream, ServerCallContext context)
+    public override Task<DiffieHellmanData> GetPublicDhParameters(DiffieHellmanQuery request, ServerCallContext context)
     {
-        // only two participants allowed
+        var g = ByteString.CopyFrom(_constraint.GetPublicG(request.ChatId));
+        var p = ByteString.CopyFrom(_constraint.GetPublicP(request.ChatId));
+
+        var result = new DiffieHellmanData()
+        {
+            GValue = g,
+            PValue = p
+        };
+        return Task.FromResult(result);
+    }
+
+
+    // Unary request, server streaming DiffieHellmanData
+    public override async Task ExchangeDhParameters(ExchangeData request, 
+        IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
+    {
         var list = _dhContexts.GetOrAdd(request.ChatId, _ => new List<DhContext>());
         lock (list)
         {
@@ -166,21 +186,19 @@ public class HackingGateService : HackingGate.HackingGateBase
             list.Add(new DhContext { Data = request, Stream = responseStream, Peer = context.Peer });
         }
 
-        // wait until two contexts available
         while (true)
         {
             if (context.CancellationToken.IsCancellationRequested) break;
             if (list.Count == 2)
             {
-                // g and p constants TODO: use real values
-                var g = ByteString.CopyFromUtf8("G_CONST");
-                var p = ByteString.CopyFromUtf8("P_CONST");
-                // send each other's data
                 foreach (var ctx in list)
                 {
                     var mate = list.Find(x => x.Peer != ctx.Peer);
-                    var reply = new DiffieHellmanData { FromMate = mate.Data, GValue = g, PValue = p };
-                    await ctx.Stream.WriteAsync(reply);
+                    if (mate == null)
+                    {
+                        throw new RpcException(new Status(StatusCode.NotFound, "Not found data or was cancelled"));
+                    }
+                    await ctx.Stream.WriteAsync(mate.Data);
                 }
                 break;
             }
@@ -215,14 +233,62 @@ public class HackingGateService : HackingGate.HackingGateBase
     public override async Task<FileAck> SendFile(IAsyncStreamReader<FileChunk> requestStream, ServerCallContext context)
     {
         long total = 0;
+        EncryptedFile file = null!;
+        bool initialized = false;
+        string path = "";
         await foreach (var chunk in requestStream.ReadAllAsync())
+        {
+            if (!initialized)
+            {
+                Directory.CreateDirectory(_fileStorage.StorageDir);
+
+                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName}.enc");
+                file = new EncryptedFile(path);
+                initialized = true;
+            }
+
             total += chunk.Data.Length;
+            await file.AppendFragmentAtOffsetAsync(chunk.Offset, chunk.Data.ToByteArray());
+        }
+
+        if (initialized)
+        {
+            await _fileStorage.AddAsync(Path.GetFileName(path));
+            file.Dispose();
+        }
+
         return new FileAck { Ok = true, TotalSize = total };
     }
 
+
     public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
     {
-        // No stored files yet
-        throw new RpcException(new Status(StatusCode.Unimplemented, "ReceiveFile not implemented"));
+        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName}.enc");
+        
+        bool isExists = await _fileStorage.ExistsAsync(fullPath);
+        if (!isExists)
+            throw new RpcException(new Status(StatusCode.NotFound, "File not found"));
+
+        using var file = new EncryptedFile(fullPath);
+
+        while (true)
+        {
+            if (context.CancellationToken.IsCancellationRequested)
+                break;
+
+            var fragment = await file.ReadNextFragmentAsync();
+            if (fragment == null)
+                break;
+
+            var (data, offset) = fragment.Value;
+            var chunk = new FileChunk
+            {
+                ChatId  = request.ChatId,
+                FileName = request.FileName,
+                Data     = ByteString.CopyFrom(data),
+                Offset   = offset
+            };
+            await responseStream.WriteAsync(chunk);
+        }
     }
 }

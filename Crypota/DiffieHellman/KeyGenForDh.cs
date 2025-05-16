@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿using System.Buffers;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Crypota.PrimalityTests;
 using Crypota.RSA;
@@ -11,6 +13,8 @@ public class KeyGenForDh
     private readonly double _probability;
     private readonly int _bitLength;   
     
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public KeyGenForDh(RsaService.PrimaryTestOption primaryTestOption, double probability, int bitLength)
     {
             
@@ -44,41 +48,36 @@ public class KeyGenForDh
     }
     
     
-    private byte[] GetRandomBytes(int maxBits)
-    {
-        int size =  maxBits / 8 + (maxBits % 8 == 0 ? 0 : 1);
-        byte mask = (byte)(1 << ((maxBits % 8) - 1));
-        byte[] bytes = new byte[size];
-        _rng.GetBytes(bytes);
-        bytes[^1] &= mask;
-            
-        return bytes;
-    }
-
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <returns></returns>
     public BigInteger GeneratePrimaryNumber()
     {
         BigInteger candidate;
         Probability state;
-        int bits = _bitLength % 8;
-        if (bits == 0) bits = 8;
-        do 
-        {
-            byte[] bytes = GetRandomBytes(_bitLength);
-            bytes[^1] |= (byte) (1 << (bits - 1));
+        int remBits = _bitLength & 7;
+        int size = (_bitLength + 7) >> 3;
 
-            candidate = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
-            state = _primaryTest.PrimaryTest(candidate, _probability);
-            if (state == Probability.PossiblePrimal)
+        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        try
+        {
+            do
             {
-                candidate = candidate * 2 + 1;
+                _rng.GetBytes(buffer, 0, size);
+                if (remBits == 0) remBits = 8;
+                buffer[size - 1] |= (byte)(1 << (remBits - 1));
+
+                candidate = new BigInteger(buffer, isUnsigned: true, isBigEndian: false);
                 state = _primaryTest.PrimaryTest(candidate, _probability);
+                if (state == Probability.PossiblePrimal)
+                {
+                    candidate = candidate * 2 + 1;
+                    state = _primaryTest.PrimaryTest(candidate, _probability);
+                }
             }
-        } while (state == Probability.Composite);
-            
-        return candidate;
+            while (state == Probability.Composite);
+            return candidate;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }

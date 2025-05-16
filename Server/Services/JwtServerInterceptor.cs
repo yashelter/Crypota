@@ -27,10 +27,9 @@ public class JwtServerInterceptor : Interceptor
         ServerCallContext ctx,
         UnaryServerMethod<TRequest,TResponse> next)
     {
-        var m = ctx.Method; // e.g. "/auth.Authentication/Register"
+        var m = ctx.Method;
         
         _logger.LogTrace("Called Jwt handler before method: {Method}", m);
-        
         
         if (m.EndsWith("Register") ||         // TODO: to global settings (or reflection?)
             m.EndsWith("Login")    ||

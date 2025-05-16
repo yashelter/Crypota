@@ -21,7 +21,10 @@ service HackingGate {
   rpc LeaveRoom(RoomPassKey) returns (google.protobuf.Empty);
 
   // Обмен параметрами Диффи–Хеллмана
-  rpc ExchangeDhParameters(ExchangeData) returns (stream DiffieHellmanData);
+  rpc ExchangeDhParameters(ExchangeData) returns (stream ExchangeData);
+  
+  // Получение публичных частей
+  rpc GetPublicDhParameters(DiffieHellmanQuery) returns (DiffieHellmanData);
 
   // Отправка зашифрованного сообщения в комнату
   rpc SendMessage(Message) returns (MessageAck);
@@ -43,12 +46,20 @@ enum EncryptAlgo {
 }
 
 enum EncryptMode {
-  OFB = 0;
-  RD  = 1;
+    RD   = 0;
+    CTR  = 1;
+    ECB  = 2;
+    CBC  = 3;
+    OFB  = 4;
+    PCBC = 5;
+    CFB  = 6;
 }
 
 enum PaddingMode {
-  ZEROES = 0;
+  ISO10126 = 0;
+  ANSIX923 = 1;
+  PKCS7    = 2;
+  ZEROES   = 3;
 }
 
 // Ключ комнаты
@@ -71,14 +82,21 @@ message RoomData {
   PaddingMode padding    = 3;
 }
 
-// Часть Диффи–Хеллмана
+
+// Заглушка, но может быть использована, для генерации разных констант
+message DiffieHellmanQuery {
+  string chat_id     = 1;
+}
+
+
+// Часть Диффи–Хеллмана для обмена
 message ExchangeData {
   string chat_id     = 1;
   bytes  public_part = 2;
 }
 
+// Публичная Часть Диффи–Хеллмана (константы)
 message DiffieHellmanData {
-  ExchangeData fromMate = 1;
   bytes g_value         = 2;
   bytes p_value         = 3;
 }
