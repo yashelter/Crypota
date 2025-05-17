@@ -12,11 +12,12 @@ public class EncryptingManager
 {
     private SymmetricCipherWrapper encoder;
 
-    public EncryptingManager(EncryptAlgo algo, EncryptMode mode, PaddingMode padding, 
-        byte[] key, int blockSize=128, int keySize=192,  byte[]? iv = null, int? delta = null)
+    public Action<int>? SetNewProgressState { get; set; } 
+
+    public EncryptingManager(RoomData settings, byte[]? key, int blockSize=128, int keySize=192,  byte[]? iv = null, int? delta = null)
     {
         encoder = new SymmetricCipherWrapper
-        (key, (Wrapper.CipherMode)mode, (Wrapper.PaddingMode)padding, GetImplementation(algo, blockSize, keySize), iv,
+        (key, (Wrapper.CipherMode)settings.CipherMode, (Wrapper.PaddingMode)settings.Padding, GetImplementation(settings.Algo, blockSize, keySize), iv,
             new SymmetricCipherWrapper.RandomDeltaParameters()
             {
                 Delta = delta ?? 3
@@ -39,7 +40,7 @@ public class EncryptingManager
                 throw new NotSupportedException("Unknown algo");
         }
     }
-
+    
     public void SetKey(byte[] key)
     {
         
@@ -60,4 +61,5 @@ public class EncryptingManager
         return message;
     }
     // TODO: file management
+    // all should be maximum ansync
 }

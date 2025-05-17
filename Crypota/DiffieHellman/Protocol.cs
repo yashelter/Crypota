@@ -8,7 +8,7 @@ namespace Crypota.DiffieHellman;
 public static class Protocol
 {
     private static double probability = 0.999;
-    private const int Bitlen = 2048;
+    private const int Bitlen = 1024;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static (BigInteger p, BigInteger g) GeneratePairParallel(int bitlen = Bitlen)
@@ -103,7 +103,7 @@ public static class Protocol
     public static BigInteger GenerateSecret(int bitlen = Bitlen)
     {
         KeyGenForDh gen = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
-        return gen.GeneratePrimaryNumber();
+        return gen.GeneratePrimeAsync().Result;
     }
 
     public static BigInteger GetBigIntegerFromArray(byte[] array)

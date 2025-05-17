@@ -58,15 +58,18 @@ public partial class DashboardViewModel : ViewModelBase
     
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleSubscriptionButtonText))]
-    private bool _isSubscribedToSelectedChatMessages = false;
+    private bool _isSubscribedToSelectedChatMessages = false; // TODO: set up auto this
 
     public string ToggleSubscriptionButtonText => IsSubscribedToSelectedChatMessages ? "Отключиться от сообщений" : "Подключиться к сообщениям";
     
     private readonly Dictionary<string, ChatSessionContext> _chatSessionContexts = new Dictionary<string, ChatSessionContext>();
+    
+    private readonly Auth _auth;
 
     public DashboardViewModel(Action onLogout)
     {
         client = ServerApiClient.Instance._client;
+        _auth = Auth.Instance;
         _onLogout = onLogout ?? throw new ArgumentNullException(nameof(onLogout));
         _chatList = new ObservableCollection<ChatListItemModel>();
         _allMessages = new Dictionary<string, ObservableCollection<ChatMessageModel>>();
@@ -78,7 +81,7 @@ public partial class DashboardViewModel : ViewModelBase
 
     private void LoadData()
     {
-
+        // TODO
     }
     
     partial void OnSelectedChatChanged(ChatListItemModel? oldValue, ChatListItemModel? newValue)
@@ -88,7 +91,7 @@ public partial class DashboardViewModel : ViewModelBase
             if (!(oldContext.MessageReceivingCts?.IsCancellationRequested ?? true))
             {
                  oldContext.MessageReceivingCts?.Cancel();
-                 Log.Debug("Подписка на сообщения для чата {ChatId} отменена при смене чата.", oldValue.Id);
+                 Log.Debug("Подписка на сообщения для чата {0} отменена при смене чата.", oldValue.Id);
             }
         }
 
@@ -96,7 +99,10 @@ public partial class DashboardViewModel : ViewModelBase
         {
             if (!_chatSessionContexts.ContainsKey(newValue.Id))
             {
-                _chatSessionContexts[newValue.Id] = new ChatSessionContext();
+                /*_chatSessionContexts[newValue.Id] = new ChatSessionContext(room.ChatId, client, roomData);
+                _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;*/
+                Log.Error("OnSelectedChatChanged, not existed chatSessionContext it's requires rejoin ");
+                // TODO: 
             }
             var currentChatContext = _chatSessionContexts[newValue.Id];
             
@@ -123,32 +129,29 @@ public partial class DashboardViewModel : ViewModelBase
         var chatId = SelectedChat.Id;
         if (!_chatSessionContexts.TryGetValue(chatId, out var context))
         {
-            context = new ChatSessionContext();
-            _chatSessionContexts[chatId] = context;
+           Log.Error("OnSelectedChatChanged, not existed chatSessionContext, this MUST be impossible");
+           throw new NotSupportedException("OnSelectedChatChanged, not existed chatSessionContext");
+           // context MUST exist
         }
 
         if (IsSubscribedToSelectedChatMessages)
         {
-            context.MessageReceivingCts?.Cancel();
+            context.CancelMessageSubscription();
             IsSubscribedToSelectedChatMessages = false;
+            
             Log.Information("Подписка на сообщения для чата {0} отменена пользователем.", chatId);
             _toast.ShowSuccessMessageToast($"Отключено от сообщений чата: {SelectedChat.Name}");
         }
         else
         {
             _toast.ShowSuccessMessageToast($"Подключение к сообщениям чата: {SelectedChat.Name}...");
-            //await EnsureSecureConnectionAndSubscriptionAsync(chatId, context);
-            
-            IsSubscribedToSelectedChatMessages = context.IsDhComplete && (context.MessageReceivingCts != null && !context.MessageReceivingCts.IsCancellationRequested);
-            if(IsSubscribedToSelectedChatMessages)
-            {
-                _toast.ShowSuccessMessageToast($"Подключено к сообщениям чата: {SelectedChat.Name}");
-            }
-            else
-            {
-                _toast.ShowErrorMessageToast($"Не удалось подключиться к сообщениям чата: {SelectedChat.Name}");
-            }
+            await context.InitializeSessionAsync();
         }
+    }
+
+    private void OnSubscriptionStopped(string chatId)
+    {
+        
     }
 
     private bool CanToggleMessageSubscription()
@@ -230,7 +233,7 @@ public partial class DashboardViewModel : ViewModelBase
         {
             ownerWindow = desktopLifetime.MainWindow;
         }
-        else
+        if (ownerWindow is null)
         {
             throw new NotImplementedException("other device");
         }
@@ -250,21 +253,24 @@ public partial class DashboardViewModel : ViewModelBase
             result.SelectedEncryptAlgo, result.SelectedEncryptMode, result.SelectedPaddingMode);
 
         RoomPassKey? room = null;
+        RoomData? roomData = null;
         try
         {
-            room = await client.CreateRoomAsync(new RoomData()
+            roomData = new RoomData()
             {
                 Algo = result.SelectedEncryptAlgo,
                 CipherMode = result.SelectedEncryptMode,
                 Padding = result.SelectedPaddingMode,
-            });
+            };
+            
+            room = await client.CreateRoomAsync(roomData);
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Не смог создать комнату");
         }
 
-        if (room == null)
+        if (room == null || roomData == null)
         {
             _toast.ShowErrorMessageToast("Создание чата не удалось");
             return;
@@ -282,12 +288,14 @@ public partial class DashboardViewModel : ViewModelBase
             RequestRemoveUserFromChat
         )
         {
-            OwnerName = "Я",
+            OwnerName = _auth.AuthenticatedUsername!,
             CreationDate = DateTime.Now
         };
+        _chatSessionContexts[room.ChatId] = new ChatSessionContext(room.ChatId, client, roomData);
+        _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;
 
         ChatList.Add(newChat);
-        if (!_allMessages.ContainsKey(newChat.Id))
+        if (!_allMessages.ContainsKey(newChat.Id)) // TODO
         {
             _allMessages[newChat.Id] = new ObservableCollection<ChatMessageModel>();
         }
@@ -300,13 +308,12 @@ public partial class DashboardViewModel : ViewModelBase
     private async Task JoinChat()
     {
         Log.Information("DashboardViewModel: Команда JoinChat вызвана.");
-        IsOptionsPanelOpen = false; // Закрыть панель опций, если открыта
+        IsOptionsPanelOpen = false;
 
         var dialogView = new JoinChatDialogView();
-        var dialogViewModel = new JoinChatDialogViewModel(dialogView.CloseDialog); // Передаем метод закрытия из View
+        var dialogViewModel = new JoinChatDialogViewModel(dialogView.CloseDialog);
         dialogView.DataContext = dialogViewModel;
 
-        // Находим родительское окно для модального диалога
         Window? ownerWindow = null;
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopLifetime)
         {
@@ -346,18 +353,17 @@ public partial class DashboardViewModel : ViewModelBase
                 )
                 { OwnerName = $"{room.OwnerUsername}", CreationDate = DateTime.Now };
 
-            ChatList.Add(newJoinedChat);
+            ChatList.Add(newJoinedChat); // TODO
             if (!_allMessages.ContainsKey(newJoinedChat.Id))
             {
                 _allMessages[newJoinedChat.Id] = new ObservableCollection<ChatMessageModel>();
-                // Добавить приветственное сообщение
-                _allMessages[newJoinedChat.Id].Add(new ChatMessageModel("Система",
-                    "Вы присоединились к этому чату.", DateTime.Now, false));
             }
 
+            _chatSessionContexts[room.ChatId] = new ChatSessionContext(client, room);
+            _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;
             SelectedChat = newJoinedChat;
-            Log.Information("DashboardViewModel: Успешно (локально) присоединились и добавили чат: {0}",
-                chatIdToJoin);
+            
+            Log.Information("DashboardViewModel: Успешно присоединились и добавили чат: {0}", chatIdToJoin);
             _toast.ShowSuccessMessageToast("Успешное присоединение к чату");
         }
         catch (Exception ex)
@@ -374,20 +380,26 @@ public partial class DashboardViewModel : ViewModelBase
     }
 
     [RelayCommand(CanExecute = nameof(CanSendMessage))]
-    private void SendMessage()
+    private async Task SendMessage()
     {
         if (!CanSendMessage() || SelectedChat == null || SelectedChatMessages == null) return;
 
         var messageContent = NewMessageText!.Trim();
-        var newMessage = new ChatMessageModel("Я", messageContent, DateTime.Now, true);
-        
-        SelectedChatMessages.Add(newMessage);
-
-        SelectedChat.LastMessage = messageContent;
-        SelectedChat.LastMessageTime = newMessage.Timestamp;
-
+        var newMessage = new ChatMessageModel(_auth.AuthenticatedUsername!, messageContent, DateTime.Now, true, MessageType.Message);
+        await _chatSessionContexts[SelectedChat.Id].SendMessage(newMessage);
         NewMessageText = string.Empty;
         Log.Information("DashboardViewModel: Отправлено сообщение в чат '{ChatName}': {Message}", SelectedChat.Name, messageContent);
+    }
+
+    private void MessageReceived(string chatId, ChatMessageModel message)
+    {
+        var chatMessages = _allMessages[chatId];
+        chatMessages.Add(message);
+        var chat = ChatList.First(c => c.Id == chatId);
+        
+        chat.LastMessage = message.Content;
+        chat.LastMessageTime = message.Timestamp;
+        
     }
 
     [RelayCommand]
@@ -401,25 +413,25 @@ public partial class DashboardViewModel : ViewModelBase
     {
         if (chatToDelete == null) return;
 
-        Log.Information("DashboardViewModel: Запрос на удаление чата '{ChatName}' (ID: {ChatId})", chatToDelete.Name, chatToDelete.Id);
+        Log.Information("DashboardViewModel: Запрос на удаление чата '{0}' (ID: {1})", chatToDelete.Name, chatToDelete.Id);
 
         ChatList.Remove(chatToDelete);
         if (_allMessages.ContainsKey(chatToDelete.Id))
         {
             _allMessages.Remove(chatToDelete.Id);
-            Log.Debug("DashboardViewModel: Сообщения для чата {ChatId} удалены.", chatToDelete.Id);
+            Log.Debug("DashboardViewModel: Сообщения для чата {0} удалены.", chatToDelete.Id);
         }
 
         if (SelectedChat == chatToDelete)
         {
             SelectedChat = ChatList.FirstOrDefault();
-            Log.Debug("DashboardViewModel: Удален выбранный чат, выбран новый: {NewSelectedChatName}", SelectedChat?.Name ?? "Нет");
+            Log.Debug("DashboardViewModel: Удален выбранный чат, выбран новый: {0}", SelectedChat?.Name ?? "Нет");
         }
         client.CloseRoomAsync(new RoomPassKey()
         {
             ChatId = chatToDelete.Id,
         });
-        Log.Information("DashboardViewModel: Чат '{ChatName}' удален из списка.", chatToDelete.Name);
+        Log.Information("DashboardViewModel: Чат '{0}' удален из списка.", chatToDelete.Name);
     }
 
 
@@ -427,7 +439,7 @@ public partial class DashboardViewModel : ViewModelBase
     {
         if (chatContext == null) return;
 
-        Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{ChatName}' (ID: {ChatId})", chatContext.Name, chatContext.Id);
+        Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{0}' (ID: {1})", chatContext.Name, chatContext.Id);
 
         // TODO: Реализовать логику отображения диалогового окна
         // 1. Создать ViewModel для диалога удаления пользователя (например, RemoveUserDialogViewModel)

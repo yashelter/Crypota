@@ -8,12 +8,11 @@ using StainsGate; // Пространство имен для Authentication.Aut
 
 namespace AvaloniaClient.Services;
 
-public class AuthApiClient : IDisposable // Добавляем IDisposable
+public class AuthApiClient : IDisposable
 {
-    private readonly GrpcChannel _channel; // Делаем канал полем
+    private readonly GrpcChannel _channel;
     private readonly Authentication.AuthenticationClient _client;
 
-    // Ленивая инициализация для синглтона
     private static readonly Lazy<AuthApiClient> _lazyInstance =
         new Lazy<AuthApiClient>(() => new AuthApiClient(Config.Instance.ServerAddress));
 
@@ -87,7 +86,6 @@ public class AuthApiClient : IDisposable // Добавляем IDisposable
         }
     }
 
-    // Реализация IDisposable
     private bool _disposed = false;
     public void Dispose()
     {
@@ -109,7 +107,6 @@ public class AuthApiClient : IDisposable // Добавляем IDisposable
         _disposed = true;
     }
 
-    // Деструктор (финализатор)
     ~AuthApiClient()
     {
         Dispose(false);

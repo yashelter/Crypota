@@ -3,6 +3,7 @@ using System.IO;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using AvaloniaClient.Models;
 using AvaloniaClient.ViewModels;
 using AvaloniaClient.Views;
 using Serilog;
@@ -21,6 +22,8 @@ public partial class App : Application
             Directory.CreateDirectory(logDirectory);
         }
         var logFilePath = Path.Combine(logDirectory, "AvaloniaClient_Log_.txt");
+        
+        Auth.Instance = Auth.CreateAsync().Result;
         
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()

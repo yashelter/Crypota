@@ -35,7 +35,6 @@ public class Room
     public PaddingMode paddingMode { get; set; }
 }
 
-// Subscriber record
 public class Subscriber
 {
     public IServerStreamWriter<Message> MsgWriter { get; }
@@ -46,13 +45,29 @@ public class Subscriber
     }
 }
 
-// Exchange context for Diffie-Hellman
-public class DhContext
+public sealed class Subscribers
 {
-    public ExchangeData Data { get; set; }
-    public IServerStreamWriter<ExchangeData> Stream { get; set; }
-    public string Peer { get; set; }
+    public readonly ConcurrentDictionary<string, ConcurrentBag<Subscriber>> Data =
+        new ConcurrentDictionary<string, ConcurrentBag<Subscriber>>();
 }
+
+
+public class PendingDh
+{
+    public ExchangeData Request { get; set; }
+    public IServerStreamWriter<ExchangeData> ResponseStream { get; set; }
+    public TaskCompletionSource<bool> Tcs { get; } 
+        = new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
+
+
+public sealed class DhStateStore
+{
+    public readonly ConcurrentDictionary<string, PendingDh> Data 
+        = new ConcurrentDictionary<string, PendingDh>();
+}
+
+
 
 public class HackingGateService : HackingGate.HackingGateBase
 {
@@ -61,16 +76,12 @@ public class HackingGateService : HackingGate.HackingGateBase
     private readonly IFileStorage _fileStorage;
     private readonly IConstraint _constraint;
 
-    // message subscribers
-    private readonly ConcurrentDictionary<string, ConcurrentBag<Subscriber>> _subscribers =
-        new ConcurrentDictionary<string, ConcurrentBag<Subscriber>>();
+    private readonly Subscribers _subscribers;
+    private readonly DhStateStore _pendingDh;
 
-    // DH exchange contexts
-    private readonly ConcurrentDictionary<string, List<DhContext>> _dhContexts =
-        new ConcurrentDictionary<string, List<DhContext>>();
 
     public HackingGateService(IConfiguration config, ILogger<HackingGateService> logger, 
-        IFileStorage fileStorage, IConstraint constraint)
+        IFileStorage fileStorage, IConstraint constraint, Subscribers subscribers, DhStateStore pendingDh)
     {
         var settings = config.GetSection("Mongo").Get<MongoSettings>();
         if (settings == null) throw new ArgumentNullException(nameof(config));
@@ -80,6 +91,8 @@ public class HackingGateService : HackingGate.HackingGateBase
         _logger = logger;
         _fileStorage = fileStorage;
         _constraint = constraint;
+        _subscribers = subscribers;
+        _pendingDh = pendingDh;
     }
 
     public override async Task<RoomPassKey> CreateRoom(RoomData request, ServerCallContext context)
@@ -105,8 +118,8 @@ public class HackingGateService : HackingGate.HackingGateBase
         _logger.LogInformation("Closing room {0}", request.ChatId);
 
         await _rooms.DeleteOneAsync(r => r.ChatId == request.ChatId);
-        _subscribers.TryRemove(request.ChatId, out _);
-        _dhContexts.TryRemove(request.ChatId, out _);
+        _subscribers.Data.TryRemove(request.ChatId, out _);
+        _pendingDh.Data.TryRemove(request.ChatId, out _);
         return new Empty();
     }
 
@@ -131,6 +144,8 @@ public class HackingGateService : HackingGate.HackingGateBase
             throw new RpcException(new Status(StatusCode.Internal, "Failed to update room participant count."));
         }
         
+        _logger.LogDebug("Joined to room {0}", request.ChatId);
+
         return new RoomInfo
         {
             ChatId = room.ChatId,
@@ -150,7 +165,7 @@ public class HackingGateService : HackingGate.HackingGateBase
         var update = Builders<Room>.Update.Inc(r => r.ParticipantCount, -1);
         await _rooms.UpdateOneAsync(r => r.ChatId == request.ChatId, update);
 
-        if (_subscribers.TryGetValue(request.ChatId, out var bag))
+        if (_subscribers.Data.TryGetValue(request.ChatId, out var bag))
         {
             var sysMsg = new Message { ChatId = request.ChatId, Data = ByteString.CopyFromUtf8("A user has left the room") };
             foreach (var sub in bag)
@@ -170,58 +185,76 @@ public class HackingGateService : HackingGate.HackingGateBase
             GValue = g,
             PValue = p
         };
+        _logger.LogDebug("Gave public values");
+
         return Task.FromResult(result);
     }
 
 
-    // Unary request, server streaming DiffieHellmanData
     public override async Task ExchangeDhParameters(ExchangeData request, IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
     {
-        var list = _dhContexts.GetOrAdd(request.ChatId, _ => new List<DhContext>());
-        lock (list)
-        {
-            if (list.Count >= 2)
-                throw new RpcException(new Status(StatusCode.ResourceExhausted, "Already two participants in DH exchange"));
-            list.Add(new DhContext { Data = request, Stream = responseStream, Peer = context.Peer });
-        }
+        _logger.LogDebug("Started exchange with DhParameters");
 
-        while (true)
+        string chatId = request.ChatId;
+
+        var pending = new PendingDh { Request = request, ResponseStream = responseStream };
+        if (_pendingDh.Data.TryAdd(chatId, pending))
         {
-            if (context.CancellationToken.IsCancellationRequested) break;
-            if (list.Count == 2)
+            try
             {
-                foreach (var ctx in list)
-                {
-                    var mate = list.Find(x => x.Peer != ctx.Peer);
-                    if (mate == null)
-                    {
-                        throw new RpcException(new Status(StatusCode.NotFound, "Not found data or was cancelled"));
-                    }
-                    await ctx.Stream.WriteAsync(mate.Data);
-                }
-                break;
+                await pending.Tcs.Task;
             }
-            await Task.Delay(100);
+            catch (OperationCanceledException) { /* клиент отключился */ }
+            return;
         }
+        else
+        {
+            if (_pendingDh.Data.TryRemove(chatId, out var first))
+            {
+                await first.ResponseStream.WriteAsync(request);
+                await responseStream.WriteAsync(first.Request);
+                first.Tcs.SetResult(true);
+            }
+            else
+            {
+                throw new RpcException(
+                    new Status(StatusCode.Internal, "Ошибка синхронизации DH"));
+            }
+        }
+        _logger.LogDebug("Exchanged with DhParameters");
     }
 
     public override async Task<MessageAck> SendMessage(Message request, ServerCallContext context)
     {
-        if (!_subscribers.TryGetValue(request.ChatId, out var bag) || bag.Count < 1)
+        _logger.LogDebug("{0}: chat:{1}, message:{2}, sender:{3}", nameof(SendMessage), request.ChatId, request.Data, request.FromUsername);
+        if (!_subscribers.Data.TryGetValue(request.ChatId, out var bag) || bag.Count < 1)
             return new MessageAck { Ok = false, Error = "No subscribers" };
 
         foreach (var sub in bag)
+        {
             if (sub.Peer != context.Peer)
+            {
                 await sub.MsgWriter.WriteAsync(request);
+                _logger.LogDebug("Sended message {0}, {1}, {2}", sub.Peer, context.Peer, request.Data);
+
+            }
+            else
+            {
+                _logger.LogDebug("Self message {0}, {1}, total: {2}", sub.Peer, context.Peer, bag.Count);
+            }
+        }
 
         return new MessageAck { Ok = true };
     }
 
     public override async Task ReceiveMessages(RoomPassKey request, IServerStreamWriter<Message> responseStream, ServerCallContext context)
     {
-        var bag = _subscribers.GetOrAdd(request.ChatId, _ => new ConcurrentBag<Subscriber>());
+        // TODO: possibly something with login
+        var bag = _subscribers.Data.GetOrAdd(request.ChatId, _ => new ConcurrentBag<Subscriber>());
         if (bag.Count >= 2)
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "Room already has two participants"));
+
+        _logger.LogDebug("To room: {0} added new participant", request.ChatId);
 
         bag.Add(new Subscriber(responseStream, context.Peer));
 

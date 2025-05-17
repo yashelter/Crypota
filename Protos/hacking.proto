@@ -17,6 +17,9 @@ service HackingGate {
   // Подключить клиента к комнате
   rpc JoinRoom(RoomPassKey) returns (RoomInfo);
 
+  // Подписка на поток входящих сообщений из комнаты
+  rpc ReceiveMessages(RoomPassKey) returns (stream Message);
+
   // Отключить клиента от комнаты
   rpc LeaveRoom(RoomPassKey) returns (google.protobuf.Empty);
 
@@ -28,10 +31,7 @@ service HackingGate {
 
   // Отправка зашифрованного сообщения в комнату
   rpc SendMessage(Message) returns (MessageAck);
-
-  // Подписка на поток входящих сообщений из комнаты
-  rpc ReceiveMessages(RoomPassKey) returns (stream Message);
-
+  
   // Новый RPC: передача файла как последовательности чанков
   rpc SendFile(stream FileChunk) returns (FileAck);
 
@@ -103,9 +103,10 @@ message DiffieHellmanData {
 
 
 enum MessageType{
-  MESSAGE = 0;
-  IMAGE   = 1;
-  FILE    = 2;
+  MESSAGE  = 0;
+  IMAGE    = 1;
+  FILE     = 2;
+  NEW_IV   = 3;
 }
 
 // Зашифрованное сообщение

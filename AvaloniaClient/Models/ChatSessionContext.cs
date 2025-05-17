@@ -1,6 +1,7 @@
 ﻿using StainsGate; 
 using Grpc.Core;
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -13,7 +14,6 @@ namespace AvaloniaClient.Models;
 public class ChatSessionContext : IDisposable
 {
     public string ChatId { get; }
-    
 
     public EncryptAlgo Algorithm { get; set; }
     public EncryptMode Mode { get; set; }
@@ -22,8 +22,8 @@ public class ChatSessionContext : IDisposable
     public CancellationTokenSource? MessageReceivingCts { get; private set; }
     public bool IsSubscribedToMessages => MessageReceivingCts != null && !MessageReceivingCts.IsCancellationRequested;
     
-    public event Action<ChatMessageModel>? OnMessageReceived;
-    public event Action<string, string>? OnMessageSubscriptionError;
+    public event Action<string, ChatMessageModel>? OnMessageReceived;
+    public event Action<string, string>? OnMessageError;
     
     public event Action<string>? OnSubscriptionStarted;
     public event Action<string>? OnSubscriptionStopped;
@@ -31,17 +31,35 @@ public class ChatSessionContext : IDisposable
     private readonly HackingGate.HackingGateClient _grpcClient;
     private readonly ChatSessionStarter _auth;
     
-    private EncryptingManager _encryptingManager; // apply it
+    private readonly EncryptingManager _encryptingManager; // apply it
+
     
-    public ChatSessionContext(string chatId, HackingGate.HackingGateClient grpcClient, ChatSessionStarter auth)
+    public ChatSessionContext(string chatId, HackingGate.HackingGateClient grpcClient, RoomData roomData) :
+        this(grpcClient, chatId, new EncryptingManager(roomData, null),
+            new ChatSessionStarter(chatId, grpcClient))
+    {
+        
+    }
+    
+    public ChatSessionContext(HackingGate.HackingGateClient grpcClient, RoomInfo roomInfo) :
+        this(grpcClient, roomInfo.ChatId, new EncryptingManager(roomInfo.Settings, null),
+            new ChatSessionStarter(roomInfo.ChatId, grpcClient))
+    {
+        
+    }
+
+
+    public ChatSessionContext(HackingGate.HackingGateClient grpcClient, string chatId, EncryptingManager encryptingManager, ChatSessionStarter auth)
     {
         ChatId = chatId;
         _grpcClient = grpcClient ?? throw new ArgumentNullException(nameof(grpcClient));
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
+        _encryptingManager = encryptingManager ?? throw new ArgumentNullException(nameof(encryptingManager));
         
         Log.Debug("ChatSessionContext создан для ChatId: {ChatId}", ChatId);
     }
 
+    
     public async Task InitializeSessionAsync(CancellationToken externalCt = default)
     {
         if (MessageReceivingCts is not null)
@@ -73,7 +91,7 @@ public class ChatSessionContext : IDisposable
 
     private async Task ReceiveMessagesLoopAsync(CancellationToken ct)
     {
-        Log.Information("Запущен цикл получения сообщений для чата {ChatId}", ChatId);
+        Log.Information("Запущен цикл получения сообщений для чата {0}", ChatId);
         try
         {
             var request = new RoomPassKey { ChatId = this.ChatId };
@@ -83,11 +101,16 @@ public class ChatSessionContext : IDisposable
             {
                 if (ct.IsCancellationRequested)
                 {
-                    Log.Information("Получение сообщений для чата {ChatId} отменено.", ChatId);
+                    Log.Information("Получение сообщений для чата {0} отменено.", ChatId);
                     break;
                 }
 
-                Log.Debug("Получено сообщение Protobuf для чата {ChatId}, тип: {MessageType}", ChatId, message.Type);
+                Log.Debug("Получено сообщение Protobuf для чата {0}, тип: {1}", ChatId, message.Type);
+
+                if (message.Type == MessageType.NewIv)
+                {
+                    _encryptingManager.SetIv(message.Data.ToByteArray());
+                }
 
                 byte[] decryptedData;
                 try
@@ -97,12 +120,12 @@ public class ChatSessionContext : IDisposable
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Ошибка расшифровки сообщения в чате {0}", ChatId);
-                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(new ChatMessageModel("Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message)));
+                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, new ChatMessageModel("Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message)));
                     continue;
                 }
 
                 string messageContent = System.Text.Encoding.UTF8.GetString(decryptedData);
-                DateTime timestamp = DateTime.TryParse(message.Timestamp, out var dt) ? dt.ToLocalTime() : DateTime.UtcNow;
+                DateTime timestamp = DateTime.TryParse(message.Timestamp, out var dt) ? dt.ToLocalTime() : DateTime.UtcNow; // TODO: check
 
                 var chatMessage = new ChatMessageModel(
                     message.FromUsername,
@@ -113,7 +136,7 @@ public class ChatSessionContext : IDisposable
                 );
 
                 // Уведомляем подписчиков (ViewModel) о новом сообщении в UI потоке
-                await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(chatMessage));
+                await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, chatMessage));
             }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -123,28 +146,59 @@ public class ChatSessionContext : IDisposable
         catch (RpcException ex)
         {
             Log.Error(ex, "gRPC ошибка при получении сообщений для чата {ChatId}", ChatId);
-            OnMessageSubscriptionError?.Invoke(ChatId, $"Ошибка gRPC: {ex.Status.Detail}");
+            OnMessageError?.Invoke(ChatId, $"Ошибка gRPC: {ex.Status.Detail}");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Общая ошибка в цикле получения сообщений для чата {ChatId}", ChatId);
-            OnMessageSubscriptionError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
+            OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
         }
         finally
         {
             Log.Information("Завершен цикл получения сообщений для чата {ChatId}", ChatId);
         }
     }
-
     
-
     public void CancelMessageSubscription()
     {
         if (MessageReceivingCts != null && !MessageReceivingCts.IsCancellationRequested)
         {
-            Log.Debug("Отмена подписки на сообщения для чата {ChatId}", ChatId);
+            Log.Debug("Отмена подписки на сообщения для чата {0}", ChatId);
             MessageReceivingCts.Cancel();
             MessageReceivingCts?.Dispose();
+            MessageReceivingCts = null;
+        }
+    }
+
+
+    public async Task SendMessage(ChatMessageModel message)
+    {
+        if (!IsSubscribedToMessages)
+        {
+            Log.Warning("Нельзя отправить сообщение без обмена ключом");
+            OnMessageError?.Invoke(ChatId, $"Нельзя отправить сообщение без обмена ключом");
+            return;
+        }
+
+        try
+        {
+            var content = await Task.Run(() => Encoding.UTF8.GetBytes(message.Content));
+
+            await _grpcClient.SendMessageAsync(new Message()
+            {
+                ChatId = this.ChatId,
+                Data = ByteString.CopyFrom(_encryptingManager.EncryptMessage(content)),
+                Timestamp = message.Timestamp.ToLongTimeString(),
+                Type = message.MessageType,
+                FromUsername = message.Sender
+            });
+            Log.Debug("Sended message: {0}, to chat {1}", content, ChatId);
+            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel(message.Sender, message.Content, message.Timestamp, true, MessageType.Message));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Не удалось отправить сообщение {0}", ChatId);
+            OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
         }
     }
     
@@ -161,7 +215,7 @@ public class ChatSessionContext : IDisposable
         if (_disposed) return;
         if (disposing)
         {
-            Log.Debug("Dispose ChatSessionContext для ChatId: {ChatId}", ChatId);
+            Log.Debug("Dispose ChatSessionContext для ChatId: {0}", ChatId);
             CancelMessageSubscription();
             MessageReceivingCts?.Dispose();
             MessageReceivingCts = null;

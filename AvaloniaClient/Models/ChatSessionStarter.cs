@@ -68,9 +68,10 @@ public class ChatSessionStarter
                 }
             }
 
-            BigInteger secret = GenerateSecret();
+            BigInteger secret = await Task.Run(() => GenerateSecret(), externalCt);
 
-            BigInteger publicKey = GenerateDhKeys(GetBigIntegerFromArray(_gValue), secret, GetBigIntegerFromArray(_pValue));
+            BigInteger publicKey =  await Task.Run(() => GenerateDhKeys(GetBigIntegerFromArray(_gValue), secret, 
+                GetBigIntegerFromArray(_pValue)), externalCt);
             
             OwnDhPrivateKey = secret.ToByteArray();
             OwnDhPublicKey = publicKey.ToByteArray();
@@ -81,6 +82,7 @@ public class ChatSessionStarter
 
             if (IsDhComplete)
             {
+                Log.Warning("Обмен был успешен для чата {0}", ChatId);
                 OnDhCompleted?.Invoke(ChatId);
             }
             else

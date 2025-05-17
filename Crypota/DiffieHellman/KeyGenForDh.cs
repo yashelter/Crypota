@@ -81,32 +81,63 @@ public class KeyGenForDh
         }
     }
     
-    private byte[] GetRandomBytes(int maxBits)
+    private byte[] GetRandomBytes(int bitCount)
     {
-        int size =  maxBits / 8 + (maxBits % 8 == 0 ? 0 : 1);
-        byte mask = (byte)(1 << ((maxBits % 8) - 1));
-        byte[] bytes = new byte[size];
-        _rng.GetBytes(bytes);
-        bytes[^1] &= mask;
-            
-        return bytes;
+        int byteCount = (bitCount + 7) >> 3;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+        try
+        {
+            _rng.GetBytes(buffer.AsSpan(0, byteCount));
+
+            int excessBits = (byteCount << 3) - bitCount;
+            if (excessBits > 0)
+            {
+                byte mask = (byte)(0xFF >> excessBits);
+                buffer[byteCount - 1] &= mask;
+            }
+
+            var result = new byte[byteCount];
+            Array.Copy(buffer, result, byteCount);
+            return result;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, false);
+        }
     }
 
-    public BigInteger GeneratePrimaryNumber()
+    private BigInteger GenerateCandidate()
     {
-        BigInteger candidate;
-        Probability state;
-        int bits = _bitLength % 8;
-        if (bits == 0) bits = 8;
-        do 
-        {
-            byte[] bytes = GetRandomBytes(_bitLength);
-            bytes[^1] |= (byte) (1 << (bits - 1));
+        var bytes = GetRandomBytes(_bitLength);
+        int topBitIndex = (_bitLength - 1) & 7;
+        bytes[^1] |= (byte)(1 << topBitIndex);
+        bytes[0] |= 1;
+        return new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+    }
 
-            candidate = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
-            state = _primaryTest.PrimaryTest(candidate, _probability);
-        } while (state == Probability.Composite);
-            
-        return candidate;
+    
+    public async Task<BigInteger> GeneratePrimeAsync(CancellationToken cancellationToken = default)
+    {
+        var tcs = new TaskCompletionSource<BigInteger>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        int workerCount = Environment.ProcessorCount;
+        Task[] workers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                var candidate = GenerateCandidate();
+                if (_primaryTest.PrimaryTest(candidate, _probability) != Probability.Composite)
+                {
+                    if (tcs.TrySetResult(candidate))
+                        cts.Cancel();
+                    break;
+                }
+            }
+        }, cts.Token)).ToArray();
+
+        var result = await tcs.Task.ConfigureAwait(false);
+        try { await Task.WhenAll(workers).ConfigureAwait(false); } catch { /* ignore */ }
+        return result;
     }
 }

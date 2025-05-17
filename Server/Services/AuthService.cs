@@ -20,10 +20,10 @@ public class AuthService : Authentication.AuthenticationBase
     public AuthService(IConfiguration config, IConnectionMultiplexer redis)
     {
         _config = config;
-        var client = new MongoClient(_config["Mongo:ConnectionString"]); // Создаём клиента MongoDB :contentReference[oaicite:4]{index=4}
+        var client = new MongoClient(_config["Mongo:ConnectionString"]);
         var db = client.GetDatabase(_config["Mongo:Database"]);
         _users = db.GetCollection<User>(_config["Mongo:UsersCollection"]);
-        _cache = redis.GetDatabase(); // Получаем базу Redis :contentReference[oaicite:5]{index=5}
+        _cache = redis.GetDatabase();
     }
 
     public override async Task<AuthResponse> Register(RegisterRequestData request, ServerCallContext context)
@@ -55,11 +55,11 @@ public class AuthService : Authentication.AuthenticationBase
         var token = GenerateJwt(request.Username);
         var expire = int.Parse(_config["Jwt:ExpiresInSeconds"]?? 
                                throw new InvalidOperationException("Not correct settings setup"));
-        await _cache.StringSetAsync(GenerateRedisKey(token), "active", TimeSpan.FromSeconds(expire)); // Храним токен :contentReference[oaicite:10]{index=10}
-
+        await _cache.StringSetAsync(GenerateRedisKey(token), "active", TimeSpan.FromSeconds(expire));
         return new AuthResponse { Token = token, ExpiresIn = expire };
     }
 
+    
     public override async Task<ValidateResponse> ValidateToken(ValidateRequest req, ServerCallContext ctx)
     {
         var isActive = await _cache.KeyExistsAsync(GenerateRedisKey(req.Token));

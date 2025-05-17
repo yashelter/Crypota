@@ -3,6 +3,7 @@ using AvaloniaClient.Models; // Убедитесь, что Config и Auth дос
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
+using Serilog;
 using StainsGate; // Пространство имен для HackingGateClient
 
 namespace AvaloniaClient.Services;
@@ -48,6 +49,12 @@ public class ServerApiClient : IDisposable // Добавляем IDisposable
             if (!string.IsNullOrEmpty(token))
             {
                 headers.Add("authorization", $"Bearer {token}");
+                Log.Information("Added token for query {0}", context.Method);
+            }
+            else
+            {
+                Log.Information("Nod added token for query {0}", context.Method);
+
             }
             var opts = context.Options.WithHeaders(headers);
             var newCtx = new ClientInterceptorContext<TRequest, TResponse>(

@@ -53,13 +53,13 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         set
         {
             _key = value;
-            _implementation.Key = value;
+            if (value != null) _implementation.Key = value;
         }
     }
 
 
     public SymmetricCipherWrapper(
-        byte[] key,
+        byte[]? key,
         CipherMode mode,
         PaddingMode padding,
         ISymmetricCipher implementation, // added
