@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.CompilerServices;
 using Crypota.Interfaces;
 using static Crypota.CryptoMath.GaloisFieldTwoPowEight;
 namespace Crypota.Symmetric.Rijndael;
@@ -77,18 +78,22 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static byte RightCycleShift(byte a, int shift)
     {
         shift %= 8;
         return (byte) ((a >> shift) | (a << (8 - shift)));
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+
     private static byte LeftCycleShift(byte b, int shift)
     {
         shift %= 8;
         return (byte)((b << shift) | (b >> (8 - shift)));
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte AffineTransformation(byte b)
     {
         return (byte)
@@ -110,11 +115,12 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
             
             sBox[i] = t;
             invSBox[t] = (byte)i;
-        } 
-        
+        }
+
         return (sBox, invSBox);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void SubBytes(Span<byte> state)
     {
         for (int i = 0; i < state.Length; i++)
@@ -123,6 +129,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         }
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void InvertedSubBytes(Span<byte> state)
     {
         for (int i = 0; i < state.Length; i++)
@@ -130,28 +137,29 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
             state[i] = _sBoxes.Value.invSBox[state[i]];
         }
     }
-    
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ShiftRowCycleLeft(Span<byte> line, int shift)
     {
         shift = shift % line.Length;
 
         if (line.Length == 0 || shift == 0)
             return;
-        
+
         byte[] temp = ArrayPool<byte>.Shared.Rent(shift);
-        
-        try
-        {
-            line.Slice(0, shift).CopyTo(temp);
-            line.Slice(shift).CopyTo(line);
-            temp.AsSpan(0, shift).CopyTo(line.Slice(line.Length - shift));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(temp);
-        }
+
+        line.Slice(0, shift).CopyTo(temp);
+        line.Slice(shift).CopyTo(line);
+        temp.AsSpan(0, shift).CopyTo(line.Slice(line.Length - shift));
+
+        ArrayPool<byte>.Shared.Return(temp);
+
     }
-    
+
+
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ShiftRowCycleRight(Span<byte> line, int shift)
     {
         shift = shift % line.Length;
@@ -161,20 +169,18 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         
         byte[] temp = ArrayPool<byte>.Shared.Rent(shift);
         
-        try
-        {
+       
             line.Slice(line.Length - shift, shift).CopyTo(temp);
             line.Slice(0, line.Length - shift).CopyTo(line.Slice(shift));
             temp.AsSpan(0, shift).CopyTo(line.Slice(0, shift));
             
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(temp);
-        }
+     
+        ArrayPool<byte>.Shared.Return(temp);
+        
     }
 
-    
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void ShiftRows(Span<byte> state)
     {
         int len = _nb;
@@ -183,12 +189,12 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         for (int row = 1; row < 4; row++)
         {
             Span<byte> lineSpan = line.AsSpan(0, len);
-            
+
             for (int col = 0; col < len; col++)
             {
                 lineSpan[col] = state[row + 4 * col];
             }
-            
+
             ShiftRowCycleLeft(lineSpan, row);
 
             for (int col = 0; col < len; col++)
@@ -196,8 +202,12 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
                 state[row + 4 * col] = lineSpan[col];
             }
         }
+
+        ArrayPool<byte>.Shared.Return(line);
+
     }
-    
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void InvertedShiftRows(Span<byte> state)
     {
         int len = BlockSizeBits / 32;
@@ -220,8 +230,11 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
                 state[row + 4 * col] = lineSpan[col];
             }
         }
+        ArrayPool<byte>.Shared.Return(line);
+
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void MixColumns(Span<byte> state)
     {
         var cx = PolynomialInGf.GetCx();
@@ -233,6 +246,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         } 
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void InvertedMixColumns(Span<byte> state)
     {
         var cx = PolynomialInGf.GetInvCx();
@@ -244,6 +258,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         } 
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void XorTwoArrays(Span<byte> a, Span<byte> b)
     {
         for (int i = 0; i < a.Length; i++)
@@ -253,6 +268,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
 
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void AddRoundKey(Span<byte> state, Span<byte> roundKey)
     {
         
@@ -261,7 +277,9 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
             state[i] = (byte) (state[i] ^ roundKey[i]);
         }
     }
-
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void RotBytes(Span<byte> b)
     {
         var temp = b[0];
@@ -270,7 +288,8 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         b[2] = b[3];
         b[3] = temp;
     }
-
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte[][] GenerateRcon()
     {
         int size = (_nb * (_nr + 1) * 4);
@@ -290,6 +309,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private byte[] KeyExpansion(byte[] key)
     {
         int keySizeBytes = _nk * 4;
@@ -327,6 +347,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public Memory<byte>[] GetRoundKeys(byte[] key)
     {
         int roundKeySizeBytes = _nb * 4;
@@ -343,6 +364,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
 
     // Round
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void EncryptionTransformation(Span<byte> state, Span<byte> roundKey)
     {
         SubBytes(state);
@@ -351,6 +373,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         AddRoundKey(state, roundKey);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void DecryptionTransformation(Span<byte> state, Span<byte> roundKey)
     {
         AddRoundKey(state, roundKey);
@@ -360,6 +383,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
 
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void FinalRound(Span<byte> message, Span<byte> roundKey)
     {
         SubBytes(message);
@@ -368,6 +392,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void InvertedFinalRound(Span<byte> message, Span<byte> roundKey)
     {
         AddRoundKey(message, roundKey);
@@ -376,6 +401,7 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void EncryptBlock(Span<byte> state)
     {
         if (Key is null)
@@ -390,6 +416,8 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         FinalRound(state, _keys[_nr].Span);
     }
 
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void DecryptBlock(Span<byte> state)
     {
         if (Key is null)

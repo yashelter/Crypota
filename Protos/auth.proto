@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option csharp_namespace = "StainsGate";
+
+import "google/protobuf/empty.proto";
+
+package auth;
+
+// Сервис для регистрации, входа и проверки JWT
+service Authentication {
+  // Регистрация нового пользователя
+  rpc Register (RegisterRequestData) returns (AuthResponse);
+
+  // Аутентификация (вход) по логину/паролю
+  rpc Login    (LoginRequestData)  returns (AuthResponse);
+
+  // Валидация JWT и получение информации о пользователе
+  rpc ValidateToken (ValidateRequest) returns (ValidateResponse);
+}
+
+// Данные для регистрации
+message RegisterRequestData {
+  string username = 1; // уникальное имя пользователя
+  string password_hash = 2; // надёжный пароль
+}
+
+// Данные для входа
+message LoginRequestData {
+  string username = 1;
+  string password_hash = 2;
+}
+
+// Запрос на валидацию токена
+message ValidateRequest {
+  string token = 1;    // JWT, полученный при Login/Register
+}
+
+
+// Ответ при успешной регистрации/входе
+message AuthResponse {
+  string token     = 1; // JWT
+  int64  expiresIn = 2; // время жизни в секундах
+}
+
+// Ответ на проверку токена
+message ValidateResponse {
+  bool   valid    = 1; // true, если токен действителен
+  string username = 2; // subject из токена
+  int64  expiresIn = 3; // остаток времени жизни
+}

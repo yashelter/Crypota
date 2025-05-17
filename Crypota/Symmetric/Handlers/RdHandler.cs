@@ -1,10 +1,12 @@
 ﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;
 
 public class RdHandler
 {
+
     public static async Task EncryptBlocksInPlaceAsync(
         Memory<byte> state,
         ISymmetricCipher encryptor,
@@ -33,8 +35,8 @@ public class RdHandler
 
         await Parallel.ForEachAsync(
             source: Enumerable.Range(0, totalBlocks),
-            parallelOptions: new ParallelOptions { CancellationToken = cancellationToken },
-            async (blockIndex, ct) =>
+            parallelOptions: new ParallelOptions { CancellationToken = cancellationToken , MaxDegreeOfParallelism = Environment.ProcessorCount},
+             async (blockIndex, ct) =>
             {
                 BigInteger diff = blockIndex * delta + iv;
                 byte[] counterBytes = diff.ToByteArray();

@@ -1,0 +1,22 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AvaloniaClient.App"
+             xmlns:local="using:AvaloniaClient"
+             xmlns:converters="using:AvaloniaClient.Converters"
+             RequestedThemeVariant="Default">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+  
+    <Application.Styles>
+        <StyleInclude Source="avares://Notification.Avalonia/Themes/Generic.xaml" />
+        <FluentTheme />
+    </Application.Styles>
+             
+    <Application.Resources>
+        <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
+        <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
+    </Application.Resources>
+</Application>

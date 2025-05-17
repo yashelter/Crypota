@@ -154,21 +154,21 @@ public sealed class DesTests
     [DataRow(new byte[] { 0, 1, 0, 24, 0, 1, 0, 12 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 })]
     public void TestDesAsyncTest(byte[] key, byte[] message)
     {
-        SymmetricCipher cipher = new SymmetricCipher
+        SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper
         (
             key: key,
             mode: CipherMode.PCBC,
             padding: PaddingMode.ANSIX923,
             implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
-            additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
+            additionalParams: new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = 3 }
         )
         {
             Key = key,
         };
 
-        var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
-        var decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+        var encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
+        var decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
 
         for (int i = 0; i < message.Length; i++)
         {
@@ -184,21 +184,21 @@ public sealed class DesTests
     [DataRow(new byte[] { 0, 1, 0, 24, 0, 1, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 })]
     public void TestDealAsync(byte[] key, byte[] message)
     {
-        SymmetricCipher cipher = new SymmetricCipher
+        SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper
         (
             key: key,
             mode: CipherMode.CFB,
             padding: PaddingMode.ANSIX923,
             implementation: new Deal128(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
+            additionalParams: new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = 3 }
         )
         {
             Key = key,
         };
 
-        var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
-        var decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+        var encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
+        var decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
 
         for (int i = 0; i < message.Length; i++)
         {
@@ -216,21 +216,21 @@ public sealed class DesTests
         byte[] message = GetFileInBytes(filepath);
         byte[] expected = GetFileInBytes(filepath);
 
-        SymmetricCipher cipher = new SymmetricCipher
+        SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper
         (
             key: key,
             mode: CipherMode.ECB,
             padding: PaddingMode.Zeros,
             implementation: new Crypota.Symmetric.Des.Des(),
             iv: [0, 0, 0, 0, 0, 0, 0, 0],
-            additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
+            additionalParams: new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = 3 }
         )
         {
             Key = key,
         };
 
-        var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
-        var decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+        var encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
+        var decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
 
         for (int k = 0; k < message.Length; k++)
         {
@@ -254,21 +254,21 @@ public sealed class DesTests
             for (int j = 0; j < 7; j++)
             {
                 CipherMode cm = (CipherMode)j;
-                SymmetricCipher cipher = new SymmetricCipher
+                SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper
                 (
                     key: key,
                     mode: cm,
                     padding: pm,
                     implementation: new Crypota.Symmetric.Des.Des(),
                     iv: [0, 0, 0, 0, 0, 0, 0, 0],
-                    additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
+                    additionalParams: new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = 3 }
                 )
                 {
                     Key = key,
                 };
 
-                var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
-                var decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+                var encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
+                var decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
 
                 for (int k = 0; k < message.Length; k++)
                 {
@@ -294,21 +294,21 @@ public sealed class DesTests
             for (int j = 0; j < 7; j++)
             {
                 CipherMode cm = (CipherMode)j;
-                SymmetricCipher cipher = new SymmetricCipher
+                SymmetricCipherWrapper cipherWrapper = new SymmetricCipherWrapper
                 (
                     key: key,
                     mode: cm,
                     padding: pm,
                     implementation: new Deal128(),
                     iv: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                    additionalParams: new SymmetricCipher.RandomDeltaParameters() { Delta = 3 }
+                    additionalParams: new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = 3 }
                 )
                 {
                     Key = key,
                 };
 
-                var encrypted = cipher.EncryptMessageAsync(message).GetAwaiter().GetResult();
-                var decrypted = cipher.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
+                var encrypted = cipherWrapper.EncryptMessageAsync(message).GetAwaiter().GetResult();
+                var decrypted = cipherWrapper.DecryptMessageAsync(encrypted).GetAwaiter().GetResult();
 
                 for (int k = 0; k < message.Length; k++)
                 {

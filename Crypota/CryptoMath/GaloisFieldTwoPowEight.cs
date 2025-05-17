@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Crypota.CryptoMath;
 
@@ -15,15 +16,16 @@ public static class GaloisFieldTwoPowEight
     
     public static readonly Lazy<byte[]> IrreducibleEightDegree = new (GetEightDegreeIrreduciblePolynoms);
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static byte AdditionPolynoms(byte a, byte b)
     {
         return (byte) (a ^ b);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static byte MultiplyPolynomByXByMod(byte a, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
-        
+        //if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
         
         if ((a & 0x80) == 0x80)
         {
@@ -32,9 +34,10 @@ public static class GaloisFieldTwoPowEight
         return (byte) (a << 1);
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static byte MultiplyPolynomsByMod(byte a, byte b, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
+        //if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
         
         byte result = 0;
         for (int i = 0; i < 8; i++)
@@ -47,6 +50,7 @@ public static class GaloisFieldTwoPowEight
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static int GetDegree(int poly)
     {
         if (poly == 0) return -1;
@@ -60,6 +64,7 @@ public static class GaloisFieldTwoPowEight
         return degree;
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static int ModuloPolynoms(int a, int b)
     {
         if (a == 0) return 0;
@@ -80,7 +85,7 @@ public static class GaloisFieldTwoPowEight
         return a;
     }
     
-    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static int DividePolynoms(int a, int b)
     {
         if (b == 0)
@@ -107,6 +112,7 @@ public static class GaloisFieldTwoPowEight
         return res;
     }
 
+    
     public static string PolynomToString(int poly)
     {
         if (poly == 0) return "0";
@@ -127,6 +133,7 @@ public static class GaloisFieldTwoPowEight
         return sb.ToString();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static bool PolynomIsIrreducible(int poly, int degree)
     {
         int maxCheckValue = 1 << ((degree / 2) + 1);
@@ -143,6 +150,7 @@ public static class GaloisFieldTwoPowEight
 
     }
 
+    
     public static List<int> CalculateAllIrreduciblePolynoms(int degree)
     {
         if (degree < 1)
@@ -194,7 +202,9 @@ public static class GaloisFieldTwoPowEight
             result[i] = (byte) (lst[i] & 0xFF);
         return result;
     }
+    
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static byte BinaryPowerPolynomByMod(byte poly, int power, byte mod)
     {
         byte res = 1;
@@ -212,13 +222,15 @@ public static class GaloisFieldTwoPowEight
         return res;
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static byte GetOppositePolynom(byte poly, byte mod)
     {
-        if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
+        //if (!IrreducibleEightDegree.Value.Contains(mod)) throw new NotIrreduciblePolynomException();
         
         return BinaryPowerPolynomByMod(poly, 254, mod);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static PolynomialInGf AdditionPolynoms(PolynomialInGf a, PolynomialInGf b)
     {
         return new PolynomialInGf(
@@ -229,7 +241,7 @@ public static class GaloisFieldTwoPowEight
     }
     
     
-    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static PolynomialInGf MultiplicationPolynoms(PolynomialInGf a, PolynomialInGf b, byte mod)
     {
         byte d0 = (byte)((MultiplyPolynomsByMod(a.k0, b.k0, mod) ^ MultiplyPolynomsByMod(a.k3, b.k1, mod)) ^ (MultiplyPolynomsByMod(a.k2, b.k2, mod) ^ MultiplyPolynomsByMod(a.k1, b.k3, mod)));

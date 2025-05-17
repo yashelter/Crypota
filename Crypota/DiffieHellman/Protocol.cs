@@ -1,24 +1,75 @@
 ﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 using Crypota.RSA;
 using static Crypota.CryptoMath.CryptoMath;
 
 namespace Crypota.DiffieHellman;
 
-public class Protocol
+public static class Protocol
 {
     private static double probability = 0.999;
-    private static double bitlen = 3052;
+    private const int Bitlen = 1024;
     
-    public static (BigInteger p, BigInteger q) GeneratePair(int bitlen)
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static (BigInteger p, BigInteger g) GeneratePairParallel(int bitlen = Bitlen)
+    {
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
+        
+        Task<(BigInteger p, BigInteger g)> MakeCandidateAsync() => Task.Run(() =>
+        {
+            var gen = new KeyGenForDh(
+                RsaService.PrimaryTestOption.MillerRabinTest,
+                probability, bitlen);
+
+            while (!token.IsCancellationRequested)
+            {
+                var pCand = gen.GeneratePrimaryNumberDh();
+                var phi = pCand - 1;
+                var q = phi / 2;
+
+                for (BigInteger gCand = 2; gCand < phi; gCand++)
+                {
+                    if (BinaryPowerByMod(gCand, phi / q, pCand) != 1 &&
+                        BinaryPowerByMod(gCand, phi / 2, pCand) != 1)
+                    {
+                        return (pCand, gCand);
+                    }
+                }
+            }
+            throw new OperationCanceledException(token);
+        }, token);
+
+        int degree = Environment.ProcessorCount;
+        var tasks = Enumerable.Range(0, degree)
+            .Select(_ => MakeCandidateAsync())
+            .ToList();
+
+        var first = Task.WhenAny(tasks).Result;
+        var result = first.Result;
+
+        cts.Cancel();
+        cts.Dispose();
+        return result;
+    }
+    
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static (BigInteger p, BigInteger q) GeneratePair(int bitlen = Bitlen)
     {
         KeyGenForDh genForDh = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
         BigInteger g = 1, p;
         bool great = false;
+        int i = 0;
         do
         {
-            p = genForDh.GeneratePrimaryNumber();
+            Console.Clear();
+
+            p = genForDh.GeneratePrimaryNumberDh();
             var phi = p - 1;
-        
+            Console.WriteLine(p);
+
             var q = (phi / 2);
             for (BigInteger probG = 2; probG < phi; probG++)
             {
@@ -31,18 +82,42 @@ public class Protocol
                 }
             }
         } while (!great);
-        
-            
+
+        Console.Clear();
         return (g, p);
     }
 
-    public static BigInteger GeneratePart(BigInteger g, BigInteger secretPrimal, BigInteger p)
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static BigInteger GenerateDhKeys(BigInteger g, BigInteger secretPrimal, BigInteger p)
     {
         return BinaryPowerByMod(g, secretPrimal, p);
     }
-
-    public static BigInteger GenerateSecret(BigInteger a, BigInteger b, BigInteger p)
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static BigInteger CalculateSharedSecret(BigInteger a, BigInteger bigB, BigInteger p)
     {
-        return BinaryPowerByMod(a, b, p);
+        return BinaryPowerByMod(bigB, a, p);
+    }
+
+    public static BigInteger GenerateSecret(int bitlen = Bitlen)
+    {
+        KeyGenForDh gen = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
+        return gen.GeneratePrimeAsync().Result;
+    }
+
+    public static BigInteger GetBigIntegerFromArray(byte[] array)
+    {
+        byte[] init = new byte[array.Length + 1];
+                
+        Array.Copy(
+            sourceArray: array,
+            sourceIndex: 0,
+            destinationArray: init,
+            destinationIndex: 1,
+            length: array.Length
+        );
+                
+        return new BigInteger(init, isUnsigned: true, isBigEndian: false);
     }
 }

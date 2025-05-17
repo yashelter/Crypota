@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿using System.Buffers;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Crypota.PrimalityTests;
 using Crypota.RSA;
@@ -11,6 +13,8 @@ public class KeyGenForDh
     private readonly double _probability;
     private readonly int _bitLength;   
     
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public KeyGenForDh(RsaService.PrimaryTestOption primaryTestOption, double probability, int bitLength)
     {
             
@@ -44,41 +48,96 @@ public class KeyGenForDh
     }
     
     
-    private byte[] GetRandomBytes(int maxBits)
-    {
-        int size =  maxBits / 8 + (maxBits % 8 == 0 ? 0 : 1);
-        byte mask = (byte)(1 << ((maxBits % 8) - 1));
-        byte[] bytes = new byte[size];
-        _rng.GetBytes(bytes);
-        bytes[^1] &= mask;
-            
-        return bytes;
-    }
-
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <returns></returns>
-    public BigInteger GeneratePrimaryNumber()
+    public BigInteger GeneratePrimaryNumberDh()
     {
         BigInteger candidate;
         Probability state;
-        int bits = _bitLength % 8;
-        if (bits == 0) bits = 8;
-        do 
-        {
-            byte[] bytes = GetRandomBytes(_bitLength);
-            bytes[^1] |= (byte) (1 << (bits - 1));
+        int remBits = _bitLength & 7;
+        int size = (_bitLength + 7) >> 3;
 
-            candidate = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
-            state = _primaryTest.PrimaryTest(candidate, _probability);
-            if (state == Probability.PossiblePrimal)
+        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        try
+        {
+            do
             {
-                candidate = candidate * 2 + 1;
+                _rng.GetBytes(buffer, 0, size);
+                if (remBits == 0) remBits = 8;
+                buffer[size - 1] |= (byte)(1 << (remBits - 1));
+
+                candidate = new BigInteger(buffer, isUnsigned: true, isBigEndian: false);
                 state = _primaryTest.PrimaryTest(candidate, _probability);
+                if (state == Probability.PossiblePrimal)
+                {
+                    candidate = candidate * 2 + 1;
+                    state = _primaryTest.PrimaryTest(candidate, _probability);
+                }
             }
-        } while (state == Probability.Composite);
-            
-        return candidate;
+            while (state == Probability.Composite);
+            return candidate;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+    
+    private byte[] GetRandomBytes(int bitCount)
+    {
+        int byteCount = (bitCount + 7) >> 3;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+        try
+        {
+            _rng.GetBytes(buffer.AsSpan(0, byteCount));
+
+            int excessBits = (byteCount << 3) - bitCount;
+            if (excessBits > 0)
+            {
+                byte mask = (byte)(0xFF >> excessBits);
+                buffer[byteCount - 1] &= mask;
+            }
+
+            var result = new byte[byteCount];
+            Array.Copy(buffer, result, byteCount);
+            return result;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, false);
+        }
+    }
+
+    private BigInteger GenerateCandidate()
+    {
+        var bytes = GetRandomBytes(_bitLength);
+        int topBitIndex = (_bitLength - 1) & 7;
+        bytes[^1] |= (byte)(1 << topBitIndex);
+        bytes[0] |= 1;
+        return new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+    }
+
+    
+    public async Task<BigInteger> GeneratePrimeAsync(CancellationToken cancellationToken = default)
+    {
+        var tcs = new TaskCompletionSource<BigInteger>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        int workerCount = Environment.ProcessorCount;
+        Task[] workers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                var candidate = GenerateCandidate();
+                if (_primaryTest.PrimaryTest(candidate, _probability) != Probability.Composite)
+                {
+                    if (tcs.TrySetResult(candidate))
+                        cts.Cancel();
+                    break;
+                }
+            }
+        }, cts.Token)).ToArray();
+
+        var result = await tcs.Task.ConfigureAwait(false);
+        try { await Task.WhenAll(workers).ConfigureAwait(false); } catch { /* ignore */ }
+        return result;
     }
 }
