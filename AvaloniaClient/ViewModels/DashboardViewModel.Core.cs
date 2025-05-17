@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Notification;
 using AvaloniaClient.Models;
+using AvaloniaClient.Services;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using StainsGate;
@@ -49,7 +50,7 @@ public partial class DashboardViewModel : ViewModelBase
         {
             await clipboard.SetTextAsync(SelectedChat.Id);
             Log.Information("ID чата {ChatId} скопирован в буфер обмена.", SelectedChat.Id);
-            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Name}' скопирован");
+            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Id}' скопирован");
         }
         else
         {
@@ -98,15 +99,12 @@ public partial class DashboardViewModel : ViewModelBase
         _selectedChat = new ChatListItemModel("чат", "имя создателя", "пусто",
             DateTime.Now,
             new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd },
-            (_) => { }, (_) => { })
-        {
-            Name = "Тестовый чат (дизайн)"
-        };
+            (_) => { }, (_) => { });
         if (_selectedChat != null && !_allMessages.ContainsKey(_selectedChat.Id))
         {
             _allMessages[_selectedChat.Id] = new ObservableCollection<ChatMessageModel>
             {
-                new ChatMessageModel("Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message)
+                new ChatMessageModel(_selectedChat.Id, "Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message)
             };
         }
 

@@ -8,7 +8,7 @@ using Serilog;
 using StainsGate;
 using static Crypota.DiffieHellman.Protocol;
 
-namespace AvaloniaClient.Models;
+namespace AvaloniaClient.Contexts;
 
 
 public class ChatSessionStarter

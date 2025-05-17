@@ -110,7 +110,7 @@
                                 </ContextMenu>
                             </Border.ContextMenu>
                             <StackPanel Spacing="5">
-                                <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Id}" FontWeight="Bold"/>
                                 <TextBlock Text="{Binding LastMessage}" Foreground="Gray" FontSize="12" TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding LastMessageTime, StringFormat='HH:mm'}" Foreground="LightGray" FontSize="10" HorizontalAlignment="Right"/>
                             </StackPanel>
@@ -127,7 +127,7 @@
                 <Grid ColumnDefinitions="Auto,*,Auto"> 
                     <Button Grid.Column="0" Command="{Binding CopySelectedChatIdCommand}" ToolTip.Tip="Копировать ID чата"
                             Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding SelectedChat.Name, FallbackValue='Выберите чат'}" 
+                        <TextBlock Text="{Binding SelectedChat.Id, FallbackValue='Выберите чат'}" 
                                    FontSize="16" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center"/>
                     </Button>
                     

@@ -1,14 +1,16 @@
-﻿using StainsGate; 
-using Grpc.Core;
-using System;
+﻿using System;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf;
-using Serilog; 
 using Avalonia.Threading;
+using AvaloniaClient.Models;
+using Google.Protobuf;
+using Grpc.Core;
+using Serilog;
+using StainsGate;
 
-namespace AvaloniaClient.Models;
+namespace AvaloniaClient.Contexts;
 
 
 public sealed class ChatSessionContext : IDisposable
@@ -126,14 +128,16 @@ public sealed class ChatSessionContext : IDisposable
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Ошибка расшифровки сообщения в чате {0}", ChatId);
-                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, new ChatMessageModel("Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message)));
+                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, "Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message)));
                     continue;
                 }
 
                 string messageContent = System.Text.Encoding.UTF8.GetString(decryptedData);
-                DateTime timestamp = DateTime.TryParse(message.Timestamp, out var dt) ? dt.ToLocalTime() : DateTime.UtcNow; // TODO: check
+                DateTime timestamp = DateTime.TryParse(message.Timestamp, new CultureInfo("ru-RU"), DateTimeStyles.RoundtripKind, out var dt) ? 
+                    dt.ToLocalTime() : DateTime.UtcNow;
 
                 var chatMessage = new ChatMessageModel(
+                    ChatId,
                     message.FromUsername,
                     messageContent,
                     timestamp,
@@ -195,12 +199,12 @@ public sealed class ChatSessionContext : IDisposable
             {
                 ChatId = this.ChatId,
                 Data = ByteString.CopyFrom(_encryptingManager.EncryptMessage(content)),
-                Timestamp = message.Timestamp.ToLongTimeString(),
+                Timestamp = message.Timestamp.ToString("o"),
                 Type = message.MessageType,
                 FromUsername = message.Sender
             });
             Log.Debug("Sended message: {0}, to chat {1}", content, ChatId);
-            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel(message.Sender, message.Content, message.Timestamp, true, MessageType.Message));
+            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, message.Sender, message.Content, message.Timestamp, true, MessageType.Message));
         }
         catch (Exception ex)
         {

@@ -1,6 +1,4 @@
 ﻿{
   "ServerAddress" : "http://localhost:5214",
-  "MongoConnectionString": "mongodb://localhost:27017",
-  "MongoDatabase": "my_database",
-  "RedisConnectionString": "localhost:6379"
+  "AppDataBase": "app.db"
 }

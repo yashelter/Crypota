@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AvaloniaClient.Models;
+using AvaloniaClient.Services;
 using AvaloniaClient.ViewModels;
 using AvaloniaClient.Views;
 using Serilog;

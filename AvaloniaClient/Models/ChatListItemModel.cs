@@ -9,7 +9,7 @@ namespace AvaloniaClient.Models;
 public partial class ChatListItemModel : ViewModelBase
 {
     public string Id { get; }
-    [ObservableProperty] private string _name;
+    [ObservableProperty] private string _creatorName;
     [ObservableProperty] private string _lastMessage;
     [ObservableProperty] private DateTime _lastMessageTime;
 
@@ -28,7 +28,7 @@ public partial class ChatListItemModel : ViewModelBase
 
     public ChatListItemModel(
         string id,
-        string name,
+        string creatorName,
         string lastMessage,
         DateTime lastMessageTime,
         RoomData settings,
@@ -36,7 +36,7 @@ public partial class ChatListItemModel : ViewModelBase
         Action<ChatListItemModel> requestRemoveUserAction)
     {
         Id = id;
-        _name = name;
+        _creatorName = creatorName;
         _lastMessage = lastMessage;
         _lastMessageTime = lastMessageTime;
 
@@ -50,7 +50,15 @@ public partial class ChatListItemModel : ViewModelBase
         Mode = settings.CipherMode;
         ChatPadding = settings.Padding; 
     }
-    
+
+    public ChatListItemModel(ChatModel chat, Action<ChatListItemModel> deleteChatAction,
+        Action<ChatListItemModel> requestRemoveUserAction)
+    : this(chat.ChatId, chat.OwnerUsername, "Чат был загружен", DateTime.Now, 
+        new RoomData() {Algo = chat.Algorithm, CipherMode = chat.CipherMode, Padding = chat.Padding}, 
+        deleteChatAction, requestRemoveUserAction)
+    {
+        _creationDate = chat.CreatedAt;
+    }
 
     private void ExecuteDeleteChat()
     {

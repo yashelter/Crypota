@@ -1,22 +1,24 @@
 ﻿using System;
 using AvaloniaClient.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
+using LiteDB;
 using StainsGate;
 
 namespace AvaloniaClient.Models;
 
 public partial class ChatMessageModel : ViewModelBase
 {
-    public Guid Id { get; }
-    [ObservableProperty] private string _sender;
-    [ObservableProperty] private string _content;
-    [ObservableProperty] private DateTime _timestamp;
-    [ObservableProperty] private bool _isSentByMe;
-    [ObservableProperty] private MessageType _messageType;
+    [BsonField("chatId")] public string ChatId { get; set; }
+    
+    [BsonField("sender")] [ObservableProperty] private string _sender;
+    [BsonField("content")][ObservableProperty] private string _content;
+    [BsonField("timestamp")][ObservableProperty] private DateTime _timestamp;
+    [BsonField("isSentByMe")][ObservableProperty] private bool _isSentByMe;
+    [BsonField("messageType")][ObservableProperty] private MessageType _messageType;
 
-    public ChatMessageModel(string sender, string content, DateTime timestamp, bool isSentByMe, MessageType messageType)
+    public ChatMessageModel(string chatId, string sender, string content, DateTime timestamp, bool isSentByMe, MessageType messageType)
     {
-        Id = Guid.NewGuid();
+        ChatId = chatId;
         _sender = sender;
         _content = content;
         _timestamp = timestamp;

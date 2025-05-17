@@ -1,9 +1,6 @@
-using System.Data;
 using StackExchange.Redis;
 using MongoDB.Driver;
 using Server.Services;
-using Grpc.Core.Interceptors;
-using Microsoft.Extensions.Logging;
 using Server.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,12 +12,12 @@ builder.Logging.SetMinimumLevel(0);
 
 
 // MongoDB
-builder.Services.AddSingleton<IMongoClient>(sp => new MongoClient(config["Mongo:ConnectionString"]));
+builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(config["Mongo:ConnectionString"]));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(config["Mongo:Database"]));
 
 
 // Redis
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     ConnectionMultiplexer.Connect(config["Redis:ConnectionString"]
                                   ?? throw new InvalidOperationException("Missing Redis config")));
 

@@ -2,12 +2,11 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Avalonia.Data;
 using Serilog;
 
-namespace AvaloniaClient.Models;
+namespace AvaloniaClient.Services;
 
 public class Auth
 {

@@ -1,11 +1,6 @@
-﻿using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
+﻿using Avalonia.Controls;
 using AvaloniaClient.ViewModels;
-
-using Avalonia.Controls;
 using Avalonia.Input;
-using AvaloniaClient.ViewModels;
 
 namespace AvaloniaClient.Views
 {

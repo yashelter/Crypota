@@ -52,7 +52,7 @@ public class ToastManager
             .Background("#D32EB2")
             .HasBadge("...")
             .HasMessage(message)
-            .Dismiss().WithButton("Отмена", button => { cancelAction.Invoke(); })
+            .Dismiss().WithButton("Отмена", _ => { cancelAction.Invoke(); })
             .Queue();
     }
 
