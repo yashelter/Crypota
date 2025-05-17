@@ -11,7 +11,7 @@ using Avalonia.Threading;
 namespace AvaloniaClient.Models;
 
 
-public class ChatSessionContext : IDisposable
+public sealed class ChatSessionContext : IDisposable
 {
     public string ChatId { get; }
 
@@ -30,7 +30,8 @@ public class ChatSessionContext : IDisposable
 
     private readonly HackingGate.HackingGateClient _grpcClient;
     private readonly ChatSessionStarter _auth;
-    
+    public ChatSessionStarter SessionStarter => _auth;
+
     private readonly EncryptingManager _encryptingManager; // apply it
 
     
@@ -73,7 +74,12 @@ public class ChatSessionContext : IDisposable
        _auth.ResetDhState();
        await _auth.InitializeSessionAsync(externalCt);
        _encryptingManager.SetKey(_auth.SharedSecret!);
-       
+
+       if (externalCt.IsCancellationRequested)
+       {
+           CancelMessageSubscription();
+           return;
+       }
        
        _ = Task.Run(async () => await ReceiveMessagesLoopAsync(MessageReceivingCts!.Token), MessageReceivingCts!.Token)
            .ContinueWith(t =>
@@ -82,7 +88,7 @@ public class ChatSessionContext : IDisposable
                {
                    Log.Error(t.Exception, "Ошибка в цикле получения сообщений для чата {0}", ChatId);
                }
-               OnSubscriptionStopped?.Invoke(ChatId);
+               Dispatcher.UIThread.InvokeAsync(() => OnSubscriptionStopped?.Invoke(ChatId));
            }, TaskScheduler.Default); 
        
        OnSubscriptionStarted?.Invoke(ChatId);
@@ -156,6 +162,7 @@ public class ChatSessionContext : IDisposable
         finally
         {
             Log.Information("Завершен цикл получения сообщений для чата {ChatId}", ChatId);
+            OnSubscriptionStopped?.Invoke(ChatId);
         }
     }
     
@@ -210,7 +217,7 @@ public class ChatSessionContext : IDisposable
         GC.SuppressFinalize(this);
     }
     
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_disposed) return;
         if (disposing)

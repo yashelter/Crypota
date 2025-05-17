@@ -12,7 +12,7 @@ public class BooleanToMessageBackgroundConverter : IValueConverter
     {
         if (value is bool isSentByMe)
         {
-            return isSentByMe ? SolidColorBrush.Parse("#DCF8C6") : SolidColorBrush.Parse("#FFFFFF");
+            return isSentByMe ? SolidColorBrush.Parse("#b3f851") : SolidColorBrush.Parse("#6af0ff");
         }
         return Brushes.Transparent;
     }

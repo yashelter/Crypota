@@ -82,12 +82,12 @@ public class ChatSessionStarter
 
             if (IsDhComplete)
             {
-                Log.Warning("Обмен был успешен для чата {0}", ChatId);
+                Log.Information("Обмен был успешен для чата {0}", ChatId);
                 OnDhCompleted?.Invoke(ChatId);
             }
             else
             {
-                 Log.Warning("DH обмен не был завершен для чата {0}. Подписка на сообщения не запущена.", ChatId);
+                 Log.Error("DH обмен не был завершен для чата {0}. Подписка на сообщения не запущена.", ChatId);
                  OnDhError?.Invoke(ChatId, "Обмен ключами Диффи-Хеллмана не был завершен.");
             }
         }

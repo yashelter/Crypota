@@ -31,9 +31,7 @@ public partial class ChatListItemModel : ViewModelBase
         string name,
         string lastMessage,
         DateTime lastMessageTime,
-        EncryptAlgo algorithm,
-        EncryptMode mode,
-        PaddingMode padding,
+        RoomData settings,
         Action<ChatListItemModel> deleteChatAction,
         Action<ChatListItemModel> requestRemoveUserAction)
     {
@@ -48,9 +46,9 @@ public partial class ChatListItemModel : ViewModelBase
         DeleteChatCommand = new RelayCommand(ExecuteDeleteChat);
         RequestRemoveUserCommand = new RelayCommand(ExecuteRequestRemoveUser);
         
-        Algorithm = algorithm;
-        Mode = mode;
-        ChatPadding = padding; 
+        Algorithm = settings.Algo;
+        Mode = settings.CipherMode;
+        ChatPadding = settings.Padding; 
     }
     
 

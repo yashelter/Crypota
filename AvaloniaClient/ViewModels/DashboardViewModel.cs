@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -58,6 +59,7 @@ public partial class DashboardViewModel : ViewModelBase
     
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleSubscriptionButtonText))]
+    [NotifyPropertyChangedFor(nameof(SubscriptionButtonClass))]
     private bool _isSubscribedToSelectedChatMessages = false; // TODO: set up auto this
 
     public string ToggleSubscriptionButtonText => IsSubscribedToSelectedChatMessages ? "Отключиться от сообщений" : "Подключиться к сообщениям";
@@ -86,26 +88,16 @@ public partial class DashboardViewModel : ViewModelBase
     
     partial void OnSelectedChatChanged(ChatListItemModel? oldValue, ChatListItemModel? newValue)
     {
-        if (oldValue?.Id != null && _chatSessionContexts.TryGetValue(oldValue.Id, out var oldContext))
-        {
-            if (!(oldContext.MessageReceivingCts?.IsCancellationRequested ?? true))
-            {
-                 oldContext.MessageReceivingCts?.Cancel();
-                 Log.Debug("Подписка на сообщения для чата {0} отменена при смене чата.", oldValue.Id);
-            }
-        }
-
         if (newValue?.Id != null)
         {
             if (!_chatSessionContexts.ContainsKey(newValue.Id))
             {
                 /*_chatSessionContexts[newValue.Id] = new ChatSessionContext(room.ChatId, client, roomData);
-                _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;*/
+                InitChatSessionContext(_chatSessionContexts[room.ChatId])*/
                 Log.Error("OnSelectedChatChanged, not existed chatSessionContext it's requires rejoin ");
                 // TODO: 
             }
             var currentChatContext = _chatSessionContexts[newValue.Id];
-            
             IsSubscribedToSelectedChatMessages = currentChatContext.MessageReceivingCts != null && !currentChatContext.MessageReceivingCts.IsCancellationRequested;
         }
         else
@@ -120,6 +112,7 @@ public partial class DashboardViewModel : ViewModelBase
         
         Log.Debug("DashboardViewModel: Выбран чат: {0}", newValue?.Name ?? "Нет");
     }
+    
 
     [RelayCommand(CanExecute = nameof(CanToggleMessageSubscription))]
     private async Task ToggleMessageSubscriptionAsync()
@@ -129,7 +122,8 @@ public partial class DashboardViewModel : ViewModelBase
         var chatId = SelectedChat.Id;
         if (!_chatSessionContexts.TryGetValue(chatId, out var context))
         {
-           Log.Error("OnSelectedChatChanged, not existed chatSessionContext, this MUST be impossible");
+           Log.Error("[ULTRA IMPORTANT] OnSelectedChatChanged, not existed chatSessionContext, this MUST be impossible");
+           return; // or ex 
            throw new NotSupportedException("OnSelectedChatChanged, not existed chatSessionContext");
            // context MUST exist
         }
@@ -145,78 +139,42 @@ public partial class DashboardViewModel : ViewModelBase
         else
         {
             _toast.ShowSuccessMessageToast($"Подключение к сообщениям чата: {SelectedChat.Name}...");
-            await context.InitializeSessionAsync();
-        }
-    }
+            
+            var cts = new CancellationTokenSource();
+            CancellationToken token = cts.Token;
+            
+            var messageNotification = _toast.ShowCancelPanel(
+                "Отменить подключение...",
+                () => 
+                {
+                    Log.Debug("Пользователь нажал 'Отменить подключение' для чата {ChatId}", chatId);
+                    cts.Cancel(); 
+                }
+            );
 
-    private void OnSubscriptionStopped(string chatId)
-    {
-        
-    }
-
-    private bool CanToggleMessageSubscription()
-    {
-        return SelectedChat != null;
-    }
-
-
-    [RelayCommand(CanExecute = nameof(CanCopySelectedChatId))]
-    private async Task CopySelectedChatIdAsync()
-    {
-        if (SelectedChat?.Id == null)
-        {
-            Log.Warning("Не удалось скопировать ID чата: чат не выбран.");
-            return;
-        }
-
-        TopLevel? topLevel = null;
-        
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopApp)
-        {
-            topLevel = desktopApp.MainWindow; 
-        }
-
-        if (topLevel == null)
-        {
-            Log.Error("Не удалось получить TopLevel для доступа к буферу обмена.");
-            _toast.ShowErrorMessageToast("Не удалось получить доступ к буферу обмена.");
-            return;
-        }
-        
-        var clipboard = topLevel.Clipboard;
-
-        if (clipboard != null)
-        {
-            await clipboard.SetTextAsync(SelectedChat.Id);
-            Log.Information("ID чата {ChatId} скопирован в буфер обмена.", SelectedChat.Id);
-            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Name}' скопирован");
-        }
-        else
-        {
-            Log.Warning("Не удалось получить доступ к буферу обмена (clipboard is null).");
-            _toast.ShowErrorMessageToast("Буфер обмена недоступен.");
+            try
+            {
+                await context.InitializeSessionAsync(token);
+            }
+            catch (OperationCanceledException ex)
+            {
+                Log.Error(ex, "Операция InitializeSessionAsync для чата {ChatId} была отменена.", chatId);
+                _toast.ShowErrorMessageToast($"Подключение к чату {SelectedChat.Name} отменено.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка при InitializeSessionAsync для чата {ChatId}", chatId);
+                _toast.ShowErrorMessageToast($"Ошибка подключения к чату {SelectedChat.Name}.");
+            }
+            finally
+            {
+                _toast.DismissMessage(messageNotification);
+                cts.Dispose();
+            }
         }
     }
     
     
-    private bool CanCopySelectedChatId()
-    {
-        return SelectedChat != null && !string.IsNullOrEmpty(SelectedChat.Id);
-    }
-
-    [RelayCommand]
-    private void Logout()
-    {
-        Log.Information("DashboardViewModel: Команда Logout вызвана.");
-        _onLogout.Invoke();
-    }
-
-    [RelayCommand]
-    private void ToggleOptionsPanel()
-    {
-        IsOptionsPanelOpen = !IsOptionsPanelOpen;
-        Log.Debug("DashboardViewModel: Панель опций переключена, новое состояние: {IsOpen}", IsOptionsPanelOpen);
-    }
 
     [RelayCommand]
     private async Task CreateChat()
@@ -281,9 +239,7 @@ public partial class DashboardViewModel : ViewModelBase
             room.ChatId,
             "Чат создан, нет сообщений",
             DateTime.Now,
-            result.SelectedEncryptAlgo,
-            result.SelectedEncryptMode,
-            result.SelectedPaddingMode,
+            roomData,
             DeleteChat,
             RequestRemoveUserFromChat
         )
@@ -292,7 +248,7 @@ public partial class DashboardViewModel : ViewModelBase
             CreationDate = DateTime.Now
         };
         _chatSessionContexts[room.ChatId] = new ChatSessionContext(room.ChatId, client, roomData);
-        _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;
+        InitChatSessionContext(_chatSessionContexts[room.ChatId]);
 
         ChatList.Add(newChat);
         if (!_allMessages.ContainsKey(newChat.Id)) // TODO
@@ -304,6 +260,22 @@ public partial class DashboardViewModel : ViewModelBase
         _toast.ShowSuccessMessageToast("Чат успешно создан");
     }
 
+    private void InitChatSessionContext(ChatSessionContext ctx)
+    {
+        ctx.OnMessageReceived += MessageReceived;
+        ctx.OnMessageError += (id, error) => _toast.ShowErrorMessageToast($"Ошибка {error}, в чате {id}");
+        ctx.OnSubscriptionStarted +=(id) => _toast.ShowSuccessMessageToast($"Начался обмен сообщениями в чате {id}");
+        ctx.OnSubscriptionStopped +=(id) => _toast.ShowSuccessMessageToast($"Закончился обмен сообщениями в чате {id}");
+        ctx.OnSubscriptionStopped +=(id) => _chatSessionContexts[id].CancelMessageSubscription();
+        
+        ctx.SessionStarter.OnDhCompleted +=(id) => 
+            _toast.ShowSuccessMessageToast($"Успешный обмен параметрами ДХ для чата {id}");
+        
+        ctx.SessionStarter.OnDhError +=(id, error) => 
+            _toast.ShowSuccessMessageToast($"Ошибка обмена '{error}' параметрами ДХ в чате {id}");
+    }
+    
+    
     [RelayCommand]
     private async Task JoinChat()
     {
@@ -320,13 +292,17 @@ public partial class DashboardViewModel : ViewModelBase
             ownerWindow = desktopLifetime.MainWindow;
         }
 
+        if (ownerWindow is null)
+        {
+            throw new NotImplementedException("other device");
+        }
+
         var dialogSuccessful = await dialogView.ShowDialog<bool>(ownerWindow);
         var chatIdToJoin = dialogSuccessful ? dialogView.DialogResultChatId : null;
 
         if (!dialogSuccessful || string.IsNullOrWhiteSpace(chatIdToJoin)) 
         {
             Log.Information("DashboardViewModel: Пользователь отменил подключение к чату.");
-            
             _toast.ShowErrorMessageToast("Подключение к чату отменено.");
             return;
         }
@@ -340,27 +316,18 @@ public partial class DashboardViewModel : ViewModelBase
                 ChatId = chatIdToJoin,
             });
             
-            var newJoinedChat = new ChatListItemModel(
-                    room.ChatId,
-                    $"{chatIdToJoin}",
-                    "Вы присоединились к чату.",
-                    DateTime.Now,
-                    room.Settings.Algo,
-                    room.Settings.CipherMode,
-                    room.Settings.Padding,
-                    DeleteChat,
-                    RequestRemoveUserFromChat
-                )
+            var newJoinedChat = new ChatListItemModel(room.ChatId, $"{chatIdToJoin}", "Вы присоединились к чату.", 
+                    DateTime.Now, room.Settings, DeleteChat, RequestRemoveUserFromChat)
                 { OwnerName = $"{room.OwnerUsername}", CreationDate = DateTime.Now };
 
-            ChatList.Add(newJoinedChat); // TODO
+            ChatList.Add(newJoinedChat); // TODO: what to do?
             if (!_allMessages.ContainsKey(newJoinedChat.Id))
             {
                 _allMessages[newJoinedChat.Id] = new ObservableCollection<ChatMessageModel>();
             }
 
             _chatSessionContexts[room.ChatId] = new ChatSessionContext(client, room);
-            _chatSessionContexts[room.ChatId].OnMessageReceived += MessageReceived;
+            InitChatSessionContext(_chatSessionContexts[room.ChatId]);
             SelectedChat = newJoinedChat;
             
             Log.Information("DashboardViewModel: Успешно присоединились и добавили чат: {0}", chatIdToJoin);
@@ -372,12 +339,12 @@ public partial class DashboardViewModel : ViewModelBase
             _toast.ShowErrorMessageToast("Подключение к чату отменено.");
         }
     }
-
     
     private bool CanSendMessage()
     {
         return SelectedChat != null && SelectedChatMessages != null && !string.IsNullOrWhiteSpace(NewMessageText);
     }
+    
 
     [RelayCommand(CanExecute = nameof(CanSendMessage))]
     private async Task SendMessage()
@@ -399,7 +366,6 @@ public partial class DashboardViewModel : ViewModelBase
         
         chat.LastMessage = message.Content;
         chat.LastMessageTime = message.Timestamp;
-        
     }
 
     [RelayCommand]
@@ -416,9 +382,8 @@ public partial class DashboardViewModel : ViewModelBase
         Log.Information("DashboardViewModel: Запрос на удаление чата '{0}' (ID: {1})", chatToDelete.Name, chatToDelete.Id);
 
         ChatList.Remove(chatToDelete);
-        if (_allMessages.ContainsKey(chatToDelete.Id))
+        if (_allMessages.Remove(chatToDelete.Id))
         {
-            _allMessages.Remove(chatToDelete.Id);
             Log.Debug("DashboardViewModel: Сообщения для чата {0} удалены.", chatToDelete.Id);
         }
 

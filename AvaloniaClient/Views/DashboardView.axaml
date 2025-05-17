@@ -14,6 +14,20 @@
         <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
         <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
     </UserControl.Resources>
+    
+    <UserControl.Styles>
+        <Style Selector="Button:unsubscribed"> 
+            <Setter Property="Background" Value="#E52B50"/> 
+        </Style>
+        <Style Selector="Button:subscribed">
+            <Setter Property="Background" Value="#76FF7A"/> 
+        </Style>
+        <Style Selector="Button.SubscriptionButton">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="DarkGray"/>
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+    </UserControl.Styles>
 
     <Design.DataContext>
         <vm:DashboardViewModel/>
@@ -34,7 +48,7 @@
                     <Button Content="Создать чат" Command="{Binding CreateChatCommand}" HorizontalAlignment="Stretch"/>
                     <Button Content="Присоединиться к чату" Command="{Binding JoinChatCommand}" HorizontalAlignment="Stretch"/>
                     <Separator Margin="0,5"/>
-                    <Button Content="Выход из приложения" Command="{Binding LogoutCommand}" HorizontalAlignment="Stretch" Foreground="Red" FontWeight="Bold"/>
+                    <Button Content="Войти заново" Command="{Binding LogoutCommand}" HorizontalAlignment="Stretch" Foreground="Red" FontWeight="Bold"/>
                 </StackPanel>
             </Border>
             <ListBox ItemsSource="{Binding ChatList}"
@@ -90,7 +104,7 @@
                                         </MenuItem.Header>
                                     </MenuItem>
                                     <Separator/>
-                                    <MenuItem Header="Удалить пользователя из чата..." Command="{Binding RequestRemoveUserCommand}"/>
+                                    <MenuItem Header="Удалить другого пользователя из чата" Command="{Binding RequestRemoveUserCommand}"/>
                                     <Separator/>
                                     <MenuItem Header="Удалить чат" Command="{Binding DeleteChatCommand}" Foreground="Red"/>
                                 </ContextMenu>
@@ -109,7 +123,7 @@
         <GridSplitter Grid.Column="1" Width="3" Background="LightGray" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns"/>
 
         <DockPanel Grid.Column="2" IsVisible="{Binding !SelectedChatIsNull}">
-            <Border DockPanel.Dock="Top" Padding="10" Background="#F0F0F0">
+            <Border DockPanel.Dock="Top" Padding="10" Background="#6CA0A3">
                 <Grid ColumnDefinitions="Auto,*,Auto"> 
                     <Button Grid.Column="0" Command="{Binding CopySelectedChatIdCommand}" ToolTip.Tip="Копировать ID чата"
                             Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center">
@@ -121,6 +135,9 @@
                     <Button Grid.Column="2" 
                             Content="{Binding ToggleSubscriptionButtonText}" 
                             Command="{Binding ToggleMessageSubscriptionCommand}"
+                            Classes.SubscriptionButton="True"
+                            Classes.subscribed="{Binding IsSubscribedToSelectedChatMessages}"   
+                            Classes.unsubscribed="{Binding !IsSubscribedToSelectedChatMessages}"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Padding="8,4" Margin="5,0"/>
                 </Grid>
@@ -174,7 +191,7 @@
         <controls:NotificationMessageContainer Grid.Column="2" Manager="{Binding Manager}"
                                                HorizontalAlignment="Right" 
                                                VerticalAlignment="Bottom"
-                                               Margin="15" 
+                                               Margin="40" 
                                                ZIndex="999"/> 
     </Grid>
 </UserControl>

@@ -36,7 +36,7 @@ builder.Services.AddSingleton<IFileStorage, FileStorage>();
 builder.Services.AddHostedService(sp => (FileStorage)sp.GetRequiredService<IFileStorage>());
 
 builder.Services.AddSingleton<DhStateStore>();
-builder.Services.AddSingleton<Subscribers>();
+builder.Services.AddSingleton<SessionStore>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HackingGateService>();

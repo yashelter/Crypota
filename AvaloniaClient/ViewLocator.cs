@@ -2,6 +2,7 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using AvaloniaClient.ViewModels;
+using Serilog;
 
 namespace AvaloniaClient;
 
@@ -17,7 +18,15 @@ public class ViewLocator : IDataTemplate
 
         if (type != null)
         {
-            return (Control)Activator.CreateInstance(type)!;
+            try
+            {
+                return (Control)Activator.CreateInstance(type)!; 
+            }
+            catch
+            {
+                Log.Warning("Error creating view {Type} [In some cases it's normal]", type);
+                return new TextBlock { Text = $"Error creating view for {type}" };
+            }
         }
 
         return new TextBlock { Text = "Not Found: " + name };
