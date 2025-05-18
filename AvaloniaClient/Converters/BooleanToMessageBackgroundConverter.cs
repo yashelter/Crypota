@@ -12,9 +12,9 @@ public class BooleanToMessageBackgroundConverter : IValueConverter
     {
         if (value is bool isSentByMe)
         {
-            return isSentByMe ? SolidColorBrush.Parse("#b3f851") : SolidColorBrush.Parse("#6af0ff");
+            return isSentByMe ? SolidColorBrush.Parse("#CCb3f851") : SolidColorBrush.Parse("#CC6af0ff");
         }
-        return Brushes.Transparent;
+        return Brushes.Red;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

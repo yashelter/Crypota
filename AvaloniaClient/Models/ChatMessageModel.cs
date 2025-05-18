@@ -11,10 +11,11 @@ public partial class ChatMessageModel : ViewModelBase
     [BsonField("chatId")] public string ChatId { get; set; }
     
     [BsonField("sender")] [ObservableProperty] private string _sender;
-    [BsonField("content")][ObservableProperty] private string _content;
+    [BsonField("content")][ObservableProperty] private string _content; // for message it's text, for other's it's path
     [BsonField("timestamp")][ObservableProperty] private DateTime _timestamp;
     [BsonField("isSentByMe")][ObservableProperty] private bool _isSentByMe;
     [BsonField("messageType")][ObservableProperty] private MessageType _messageType;
+    [BsonField("filename")] [ObservableProperty] private string? filename = null;
 
     public ChatMessageModel(string chatId, string sender, string content, DateTime timestamp, bool isSentByMe, MessageType messageType)
     {

@@ -320,7 +320,7 @@ public class HackingGateService : HackingGate.HackingGateBase
             if (!initialized)
             {
                 Directory.CreateDirectory(_fileStorage.StorageDir);
-                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName}.enc");
+                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName}");
                 file = new EncryptedFile(path);
                 initialized = true;
             }
@@ -339,7 +339,7 @@ public class HackingGateService : HackingGate.HackingGateBase
     public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
     {
         _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName);
-        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName}.enc");
+        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName}");
         if (!await _fileStorage.ExistsAsync(fullPath).ConfigureAwait(false))
         {
             _logger.LogWarning("[ReceiveFile] File not found {Path}", fullPath);

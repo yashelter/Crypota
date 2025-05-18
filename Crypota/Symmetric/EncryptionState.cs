@@ -11,7 +11,7 @@ public enum EncryptionStateTransform
 }
 
 // this class will make working stats
-public class EncryptionState
+public class EncryptionState: ICloneable
 {
     private readonly Lock _syncRoot = new Lock();
 
@@ -73,5 +73,10 @@ public class EncryptionState
                 _transform = value;
             }
         }
+    }
+
+    public object Clone()
+    {
+        return new EncryptionState();
     }
 }

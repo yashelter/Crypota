@@ -6,18 +6,105 @@
              xmlns:converters="using:AvaloniaClient.Converters"
              xmlns:models="using:AvaloniaClient.Models" 
              xmlns:controls="clr-namespace:Avalonia.Notification.Controls;assembly=Notification.Avalonia"
+             xmlns:repositories="clr-namespace:AvaloniaClient.Repositories"
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
              x:DataType="vm:DashboardViewModel"
              x:Class="AvaloniaClient.Views.DashboardView">
 
-    <UserControl.Resources>
-        <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
-        <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
-        <converters:DarkenColorConverter x:Key="DarkenColorConverter"/>
-    </UserControl.Resources>
+   <UserControl.Resources>
+    <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
+    <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
+    <converters:DarkenColorConverter x:Key="DarkenColorConverter"/>
+    
+    <DataTemplate x:Key="TextMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, 
+                Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <TextBlock Grid.Row="1" Text="{Binding Content}" TextWrapping="Wrap"
+                           Cursor="Hand"
+                           PointerPressed="OnMessagePointerPressed"/>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FileMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+   
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Sender -->
+                    <RowDefinition Height="Auto"/> <!-- Content -->
+                    <RowDefinition Height="Auto"/> <!-- Timestamp -->
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                    <Image Source="/Assets/file_icon.png" Width="24" Height="24" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Filename}"
+                               Classes="hyperlink"
+                               Cursor="Hand"
+                               PointerPressed="OnFilePointerPressed"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ImageMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Sender -->
+                    <RowDefinition Height="Auto"/> <!-- Content -->
+                    <RowDefinition Height="Auto"/> <!-- Timestamp -->
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <Image Grid.Row="1" Source="{Binding Content}"
+                       MaxWidth="250" MaxHeight="250"
+                       Stretch="Uniform"
+                       Cursor="Hand"
+                       PointerPressed="OnFilePointerPressed"/>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+    
+    <repositories:MessageTemplateSelector x:Key="MessageSelector"
+                                          TextTemplate="{StaticResource TextMessageTemplate}"
+                                          FileTemplate="{StaticResource FileMessageTemplate}"
+                                          ImageTemplate="{StaticResource ImageMessageTemplate}"/>
+</UserControl.Resources>
     
    <UserControl.Styles>
-    <!-- 1. Базовый стиль для кнопки подписки -->
     <Style Selector="Button.subscriptionButton">
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="BorderBrush" Value="DarkGray"/>
@@ -175,24 +262,8 @@
                 </Grid>
             </Border>
             <ScrollViewer Name="MessagesScrollViewer" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding SelectedChatMessages}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="models:ChatMessageModel"> 
-                            <Border MaxWidth="400" Padding="8,5" Margin="5" CornerRadius="5"
-                                    HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}, ConverterParameter=Right}">
-                                <Border.Background>
-                                    <SolidColorBrush Color="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}"/>
-                                </Border.Background>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Sender}" FontWeight="SemiBold" FontSize="10" Opacity="0.7"
-                                               IsVisible="{Binding !IsSentByMe}"/>
-                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.6"
-                                               HorizontalAlignment="Right"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                <ItemsControl ItemsSource="{Binding SelectedChatMessages}" 
+                              ItemTemplate="{StaticResource MessageSelector}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Vertical"/>
@@ -210,7 +281,7 @@
         <controls:NotificationMessageContainer Grid.Column="2" Manager="{Binding Manager}"
                                                HorizontalAlignment="Right" 
                                                VerticalAlignment="Bottom"
-                                               Margin="40" 
+                                               Margin="50" 
                                                ZIndex="999"/> 
     </Grid>
 </UserControl>

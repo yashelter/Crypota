@@ -30,6 +30,7 @@ public sealed class ChatSessionContext : IDisposable
     public event Action<string>? OnSubscriptionStarted;
     public event Action<string>? OnSubscriptionStopped;
 
+
     private readonly HackingGate.HackingGateClient _grpcClient;
     private readonly ChatSessionStarter _auth;
     public ChatSessionStarter SessionStarter => _auth;
@@ -123,7 +124,7 @@ public sealed class ChatSessionContext : IDisposable
                 byte[] decryptedData;
                 try
                 {
-                    decryptedData =  _encryptingManager.DecryptMessage(message.Data.ToByteArray());
+                    decryptedData =  await _encryptingManager.DecryptMessage(message.Data.ToByteArray(), ct);
                 }
                 catch (Exception ex)
                 {
@@ -198,7 +199,7 @@ public sealed class ChatSessionContext : IDisposable
             await _grpcClient.SendMessageAsync(new Message()
             {
                 ChatId = this.ChatId,
-                Data = ByteString.CopyFrom(_encryptingManager.EncryptMessage(content)),
+                Data = ByteString.CopyFrom(await _encryptingManager.EncryptMessage(content)),
                 Timestamp = message.Timestamp.ToString("o"),
                 Type = message.MessageType,
                 FromUsername = message.Sender
@@ -211,6 +212,57 @@ public sealed class ChatSessionContext : IDisposable
             Log.Error(ex, "Не удалось отправить сообщение {0}", ChatId);
             OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
         }
+    }
+    
+    public async Task UploadAndEncryptFile(string loadPath, string filename, CancellationToken ct = default)
+    {
+        // TODO: много всяких проблем потенциально может быть
+        
+        Log.Debug("Начали отправку и шифрование файла {0}", filename);
+        EncryptedFileModel file = new EncryptedFileModel(loadPath);
+        using var call = _grpcClient.SendFile(cancellationToken: ct);
+
+        var result = await file.ReadNextFragmentAsync(ct);
+        
+        while (result is not null)
+        {
+            byte[] data = result.Value.Data;
+            long offset = result.Value.Offset;
+            
+            data = await _encryptingManager.EncryptMessage(data, ct);
+
+            await call.RequestStream.WriteAsync(new FileChunk()
+            {
+                ChatId = ChatId,
+                Offset = offset,
+                Data = ByteString.CopyFrom(data),
+                FileName = filename
+            }, ct);
+            result = await file.ReadNextFragmentAsync(ct);
+        }
+        
+        await call.RequestStream.CompleteAsync();
+        var ack = await call.ResponseAsync;
+        
+        Log.Debug("Закончили отправку и шифрование файла {0}", filename);
+    }
+
+    public async Task DownloadAndDecryptFile(string savePath, FileRequest request, CancellationToken ct = default)
+    {
+        // TODO: много всяких проблем потенциально может быть
+        
+        Log.Debug("Начали скачивание и дешифрование файла {0}", request.FileName);
+        EncryptedFileModel file = new EncryptedFileModel(savePath);
+        using var call = _grpcClient.ReceiveFile(request, cancellationToken: ct);
+        
+        await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
+        {
+            byte[] data = await _encryptingManager.DecryptMessage(chunk.Data.ToByteArray(), ct);
+            await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
+        }
+        
+        Log.Debug("Закончили скачивание и дешифрование файла {0}", request.FileName);
+       // OnFileDownloaded?.Invoke(savePath);
     }
     
     

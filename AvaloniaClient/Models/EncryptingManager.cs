@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Crypota.Interfaces;
 using Crypota.Symmetric;
 using Crypota.Symmetric.Rc6;
@@ -41,22 +43,22 @@ public class EncryptingManager
         }
     }
     
-    public void SetKey(byte[] key)
+    public Task SetKey(byte[] key)
     {
-        
+        return Task.CompletedTask;
     }
 
-    public void SetIv(byte[] iv)
+    public Task SetIv(byte[] iv)
     {
-        
+        return Task.CompletedTask;
     }
 
-    public byte[] EncryptMessage(byte[] message)
+    public async Task<byte[]> EncryptMessage(byte[] message, CancellationToken ct = default)
     {
         return message;
     }
 
-    public byte[] DecryptMessage(byte[] message)
+    public async Task<byte[]> DecryptMessage(byte[] message, CancellationToken ct = default)
     {
         return message;
     }

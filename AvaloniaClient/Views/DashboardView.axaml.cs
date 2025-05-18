@@ -1,6 +1,10 @@
-﻿using Avalonia.Controls;
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using AvaloniaClient.ViewModels;
 using Avalonia.Input;
+using AvaloniaClient.Models;
+using Serilog;
 
 namespace AvaloniaClient.Views
 {
@@ -36,6 +40,40 @@ namespace AvaloniaClient.Views
                     }
                 }
             }
+        }
+        
+        private void OnMessagePointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is ChatMessageModel msg)
+            {
+                Log.Information("Клик по сообщению: {0}", msg.Content);
+
+                var newText = $"[EDITED] {msg.Content}";
+                msg.Content = newText;
+
+                if (DataContext is DashboardViewModel vm)
+                {
+                    vm.OnMessageWasClicked(msg);
+                }
+            }
+        }
+        
+        private async void OnFilePointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is not TextBlock { DataContext: ChatMessageModel msg }) return;
+            var dlg = new SaveFileDialog
+            {
+                Title = "Сохранить файл как",
+                InitialFileName = msg.Filename
+            };
+                
+            var window = ((IClassicDesktopStyleApplicationLifetime) Application.Current.ApplicationLifetime)?.MainWindow;
+            var path = await dlg.ShowAsync(window);
+
+            if (string.IsNullOrEmpty(path) || (DataContext is not DashboardViewModel vm)) return;
+            
+            Log.Information("Passing save method to vm", path);
+            vm.OnFileWasClicked(msg);
         }
     }
 }

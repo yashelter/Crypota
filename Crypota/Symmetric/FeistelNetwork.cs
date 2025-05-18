@@ -51,4 +51,8 @@ public class FeistelNetwork(IKeyExtension keyExtension, IEncryptionTransformatio
     public virtual int BlockSize => 0;
     public virtual int KeySize => 0;
     public EncryptionState? EncryptionState { get; } = null;
+    public virtual object Clone()
+    {
+        throw new NotImplementedException();
+    }
 }

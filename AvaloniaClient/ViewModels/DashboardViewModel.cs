@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Notification;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using AvaloniaClient.Contexts;
 using AvaloniaClient.Models;
@@ -444,16 +446,57 @@ public partial class DashboardViewModel : ViewModelBase
         using var repo = new ChatRepository();
         repo.AddChat(chat);
     }
-    
-    
+
+
     [RelayCommand]
-    private void SelectFile()
+    private async Task SelectFile()
     {
-        Log.Information("DashboardViewModel: Запрос выбора файла (логика не реализована).");
+        var window = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+
+        if (window is null)
+        {
+            Log.Debug("SelectFile: unsupported application lifetime");
+            return;
+        }
+        
+        if (SelectedChat is null || !IsSubscribedToSelectedChatMessages)
+        {
+            Log.Debug("Can't upload to no chat");
+            _toast.ShowErrorMessageToast("Нельзя отправить файл, не начав сессию в чате");
+            return;
+        }
+
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Выберите файл",
+            AllowMultiple = false,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new ("Изображения")
+                {
+                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif"]
+                },
+                new ("Все файлы")
+                {
+                    Patterns = ["*"]
+                }
+            }
+        });
+
+        if (files is { Count: > 0 })
+        {
+            var file = files[0];
+            var path = file.Path.AbsolutePath;
+            Log.Information("Пользователь выбрал файл: {0}", path);
+            // TODO: дальше обрабатываем путь
+
+            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path, file.Name);
+        }
+
     }
-    
-    
-     private void DeleteChat(ChatListItemModel chatToDelete)
+
+
+    private void DeleteChat(ChatListItemModel chatToDelete)
     {
         if (chatToDelete == null) return;
 
@@ -487,5 +530,17 @@ public partial class DashboardViewModel : ViewModelBase
 
         Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{0}' (ID: {1})", chatContext.Id, chatContext.Id);
         // TODO:
+    }
+    
+    public void OnMessageWasClicked(ChatMessageModel msg)
+    {
+        // Предполагаем, что коллекция — ObservableCollection и ChatMessageModel реализует INotifyPropertyChanged
+        // Тогда менять msg.Content достаточно, UI обновит автоматически
+        // TODO: либо расшифровываем тут, либо тут ничего
+    }
+
+    public void OnFileWasClicked(ChatMessageModel msg)
+    {
+        Log.Debug("OnFileWasClicked: entering");
     }
 }

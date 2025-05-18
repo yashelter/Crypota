@@ -13,6 +13,70 @@ public enum PaddingMode { Zeros = 3, ANSIX923 = 1, PKCS7 = 2, ISO10126 = 0 }
 
 public class SymmetricCipherWrapper : ISymmetricCipher
 {
+     public class SymmetricCipherWrapperBuilder
+    {
+        private byte[]? _key;
+        private byte[]? _iv;
+        private CipherMode _mode = CipherMode.RD;
+        private PaddingMode _padding = PaddingMode.ISO10126;
+        private ISymmetricCipher? _implementation;
+        private readonly List<object> _additionalParams = new();
+        
+        public SymmetricCipherWrapperBuilder WithKey(byte[] key)
+        {
+            _key = key.ToArray();
+            return this;
+        }
+        
+        public SymmetricCipherWrapperBuilder WithIv(byte[] iv)
+        {
+            _iv = iv.ToArray();
+            return this;
+        }
+        
+        public SymmetricCipherWrapperBuilder WithCipherMode(CipherMode mode)
+        {
+            _mode = mode;
+            return this;
+        }
+        
+        public SymmetricCipherWrapperBuilder WithPadding(PaddingMode padding)
+        {
+            _padding = padding;
+            return this;
+        }
+        
+        public SymmetricCipherWrapperBuilder WithImplementation(ISymmetricCipher impl)
+        {
+            _implementation = impl.Clone() as ISymmetricCipher;
+            return this;
+        }
+        
+        public SymmetricCipherWrapperBuilder AddParam<T>(T param) where T : class
+        {
+            _additionalParams.Add(param!);
+            return this;
+        }
+
+        public SymmetricCipherWrapper Build()
+        {
+            if (_implementation == null)
+                throw new InvalidOperationException("Implementation must be provided via WithImplementation().");
+            
+            var keyCopy = _key?.ToArray();
+            var ivCopy  = _iv?.ToArray();
+            
+            return new SymmetricCipherWrapper(
+                keyCopy,
+                _mode,
+                _padding,
+                _implementation.Clone() as ISymmetricCipher ?? throw new InvalidOperationException("Implementation must be clonable"),
+                ivCopy,
+                _additionalParams.ToArray()
+            );
+        }
+    }
+    
     private byte[]? _key;
 
     public int BlockSize { get;  }
@@ -56,7 +120,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
             if (value != null) _implementation.Key = value;
         }
     }
-
+    
 
     public SymmetricCipherWrapper(
         byte[]? key,
@@ -385,5 +449,34 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         
         EncryptionState.Transform = EncryptionStateTransform.Idle;
         return result;
+    }
+    
+    
+    public static SymmetricCipherWrapperBuilder CreateBuilder() => new SymmetricCipherWrapperBuilder();
+
+    public object Clone()
+    {
+        var builder = CreateBuilder()
+            .WithImplementation(_implementation)
+            .WithCipherMode(_cipherMode)
+            .WithPadding(_paddingMode);
+
+        if (_key != null)
+            builder = builder.WithKey(_key);
+
+        if (_iv != null)
+            builder = builder.WithIv(_iv);
+
+        // Копируем все дополнительные параметры
+        foreach (var param in _params.Values)
+            builder = builder.AddParam(param);
+
+        // Собираем и возвращаем новую инстанцию
+        var clone = builder.Build();
+
+        // Копируем внутреннее состояние шифрования
+        clone.EncryptionState = new EncryptionState();
+
+        return clone;
     }
 }
