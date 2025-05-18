@@ -8,6 +8,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Notification;
 using AvaloniaClient.Models;
 using AvaloniaClient.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using StainsGate;
@@ -16,10 +17,6 @@ namespace AvaloniaClient.ViewModels;
 
 public partial class DashboardViewModel : ViewModelBase
 {
-    public string SubscriptionButtonClass =>
-        IsSubscribedToSelectedChatMessages ? "Button-Subscribed" : "Button-Unsubscribed";
-
-
 
     [RelayCommand(CanExecute = nameof(CanCopySelectedChatId))]
     private async Task CopySelectedChatIdAsync()

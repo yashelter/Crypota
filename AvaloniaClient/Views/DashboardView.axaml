@@ -13,22 +13,43 @@
     <UserControl.Resources>
         <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
         <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
+        <converters:DarkenColorConverter x:Key="DarkenColorConverter"/>
     </UserControl.Resources>
     
-    <UserControl.Styles>
-        <Style Selector="Button:unsubscribed"> 
-            <Setter Property="Background" Value="#E52B50"/> 
-        </Style>
-        <Style Selector="Button:subscribed">
-            <Setter Property="Background" Value="#76FF7A"/> 
-        </Style>
-        <Style Selector="Button.SubscriptionButton">
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="DarkGray"/>
-            <Setter Property="Foreground" Value="Black"/>
-        </Style>
-    </UserControl.Styles>
+   <UserControl.Styles>
+    <!-- 1. Базовый стиль для кнопки подписки -->
+    <Style Selector="Button.subscriptionButton">
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="DarkGray"/>
+        <Setter Property="Foreground" Value="Black"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Margin" Value="5,0"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
 
+        <Setter Property="Background" Value="LightGray"/> 
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Button.subscriptionButton.unsubscribed">
+        <Setter Property="Background" Value="#76FF7A"/> 
+    </Style>
+    <Style Selector="Button.subscriptionButton.subscribed">
+        <Setter Property="Background" Value="#E52B50"/>
+    </Style>
+
+    <Style Selector="Button.subscriptionButton:pointerover">
+        <Setter Property="Background"
+                Value="{Binding $self.Background, 
+                                 Converter={StaticResource DarkenColorConverter}, 
+                                 ConverterParameter=0.1}" /> 
+    </Style>
+</UserControl.Styles>
     <Design.DataContext>
         <vm:DashboardViewModel/>
     </Design.DataContext>
@@ -132,14 +153,12 @@
                     </Button>
                     
                     <TextBlock Grid.Column="1"/>
-                    <Button Grid.Column="2" 
-                            Content="{Binding ToggleSubscriptionButtonText}" 
+                    <Button Grid.Column="2"
+                            Content="{Binding ToggleSubscriptionButtonText}"
                             Command="{Binding ToggleMessageSubscriptionCommand}"
-                            Classes.SubscriptionButton="True"
-                            Classes.subscribed="{Binding IsSubscribedToSelectedChatMessages}"   
-                            Classes.unsubscribed="{Binding !IsSubscribedToSelectedChatMessages}"
-                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Padding="8,4" Margin="5,0"/>
+                            Classes.subscriptionButton="True"
+                            Classes.subscribed="{Binding IsSubscribedToSelectedChatMessages}"
+                            Classes.unsubscribed="{Binding !IsSubscribedToSelectedChatMessages}"/>
                 </Grid>
             </Border>
 

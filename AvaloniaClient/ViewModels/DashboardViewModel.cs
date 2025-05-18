@@ -61,12 +61,11 @@ public partial class DashboardViewModel : ViewModelBase
     
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleSubscriptionButtonText))]
-    [NotifyPropertyChangedFor(nameof(SubscriptionButtonClass))]
-    private bool _isSubscribedToSelectedChatMessages = false; // TODO: set up auto this
+    private bool _isSubscribedToSelectedChatMessages = false;
 
     public string ToggleSubscriptionButtonText => IsSubscribedToSelectedChatMessages ? "Отключиться от сообщений" : "Подключиться к сообщениям";
     
-    private readonly Dictionary<string, ChatSessionContext> _chatSessionContexts = new Dictionary<string, ChatSessionContext>();
+    private readonly Dictionary<string, ChatSessionContext> _chatSessionContexts = new ();
     
     private readonly Auth _auth;
 
@@ -81,19 +80,8 @@ public partial class DashboardViewModel : ViewModelBase
         Log.Information("DashboardViewModel: Экземпляр создан.");
         _ = LoadDataAsync();
     }
-
-
-    private void LoadData()
-    {
-        using var repo = new ChatRepository();
-
-        foreach (var chat in repo.GetAllChats())
-        {
-            var messages = repo.GetMessages(chat.ChatId);
-            ChatList.Add(new ChatListItemModel(chat,  DeleteChat, RequestRemoveUserFromChat));
-            _allMessages[chat.ChatId] = new ObservableCollection<ChatMessageModel>(messages);
-        }
-    }
+    
+    
     private async Task LoadDataAsync()
     {
         using var repo = new ChatRepository();
@@ -101,10 +89,9 @@ public partial class DashboardViewModel : ViewModelBase
         var chats = await Task.Run(() => repo.GetAllChats().ToList());
         var allMessages = new Dictionary<string, List<ChatMessageModel>>();
 
-        foreach (var chat in chats)
+        foreach (var chatId in chats.Select(ch => ch.ChatId))
         {
-            var msgs = await Task.Run(() => repo.GetMessages(chat.ChatId).ToList());
-            allMessages[chat.ChatId] = msgs;
+            allMessages[chatId] = await Task.Run(() => repo.GetMessages(chatId).ToList());
         }
 
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -112,9 +99,14 @@ public partial class DashboardViewModel : ViewModelBase
             foreach (var chat in chats)
             {
                 ChatList.Add(new ChatListItemModel(chat, DeleteChat, RequestRemoveUserFromChat));
+                
+                _chatSessionContexts[chat.ChatId] = new ChatSessionContext(chat.ChatId, client, chat.GetRoomData());
+                InitChatSessionContext(_chatSessionContexts[chat.ChatId]);
+                
                 _allMessages[chat.ChatId] = new ObservableCollection<ChatMessageModel>(allMessages[chat.ChatId]);
             }
             SelectedChat = ChatList.FirstOrDefault();
+            OnPropertyChanged(nameof(SelectedChat));
         });
     }
     
@@ -122,14 +114,16 @@ public partial class DashboardViewModel : ViewModelBase
     {
         if (newValue?.Id != null)
         {
-            if (!_chatSessionContexts.ContainsKey(newValue.Id))
+            if (!_chatSessionContexts.TryGetValue(newValue.Id, out var currentChatContext))
             {
-                /*_chatSessionContexts[newValue.Id] = new ChatSessionContext(room.ChatId, client, roomData);
-                InitChatSessionContext(_chatSessionContexts[room.ChatId])*/
-                Log.Error("OnSelectedChatChanged, not existed chatSessionContext it's requires rejoin ");
-                // TODO: here stopped
+                Log.Error("OnSelectedChatChanged, not existed chatSessionContext it's serious bug");
+                _toast.ShowErrorMessageToast("OnSelectedChatChanged: Not existed chatSessionContext");
+                return;
+                // Or throw ex: throw new NotSupportedException("")
+                // It can't be possible, as after data loading is created new session context.
+                // But if something is not thought good better
             }
-            var currentChatContext = _chatSessionContexts[newValue.Id];
+
             IsSubscribedToSelectedChatMessages = currentChatContext.MessageReceivingCts != null && !currentChatContext.MessageReceivingCts.IsCancellationRequested;
         }
         else
@@ -142,7 +136,7 @@ public partial class DashboardViewModel : ViewModelBase
         CopySelectedChatIdCommand.NotifyCanExecuteChanged();
         ToggleMessageSubscriptionCommand.NotifyCanExecuteChanged();
         
-        Log.Debug("DashboardViewModel: Выбран чат: {0}", newValue.Id ?? "Нет");
+        Log.Debug("DashboardViewModel: Выбран чат: {0}", newValue?.Id ?? "Нет");
     }
     
 
@@ -307,8 +301,26 @@ public partial class DashboardViewModel : ViewModelBase
         ctx.OnMessageReceived += MessageReceived;
         ctx.OnMessageError += (id, error) => _toast.ShowErrorMessageToast($"Ошибка {error}, в чате {id}");
         ctx.OnSubscriptionStarted +=(id) => _toast.ShowSuccessMessageToast($"Начался обмен сообщениями в чате {id}");
+        
+        ctx.OnSubscriptionStarted += (id) =>
+        {
+            if (SelectedChat?.Id == id)
+            {
+                IsSubscribedToSelectedChatMessages = true;
+                OnPropertyChanged(nameof(IsSubscribedToSelectedChatMessages));
+            }  
+        };
+        
         ctx.OnSubscriptionStopped +=(id) => _toast.ShowSuccessMessageToast($"Закончился обмен сообщениями в чате {id}");
         ctx.OnSubscriptionStopped +=(id) => _chatSessionContexts[id].CancelMessageSubscription();
+        ctx.OnSubscriptionStopped +=(id) =>  
+        {
+            if (SelectedChat?.Id == id)
+            {
+                IsSubscribedToSelectedChatMessages = false;
+                OnPropertyChanged(nameof(IsSubscribedToSelectedChatMessages));
+            }  
+        };
         
         ctx.SessionStarter.OnDhCompleted +=(id) => 
             _toast.ShowSuccessMessageToast($"Успешный обмен параметрами ДХ для чата {id}");

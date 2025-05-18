@@ -53,6 +53,17 @@ public class ToastManager
             .HasBadge("...")
             .HasMessage(message)
             .Dismiss().WithButton("Отмена", _ => { cancelAction.Invoke(); })
+            .WithOverlay(new ProgressBar
+            {
+                VerticalAlignment = VerticalAlignment.Bottom,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Height = 3,
+                BorderThickness = new Thickness(0),
+                Foreground = new SolidColorBrush(Color.FromArgb(128, 255, 255, 255)),
+                Background = Brushes.Transparent,
+                IsIndeterminate = true,
+                IsHitTestVisible = false
+            })
             .Queue();
     }
 

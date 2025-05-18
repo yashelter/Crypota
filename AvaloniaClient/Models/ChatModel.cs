@@ -7,10 +7,21 @@ namespace AvaloniaClient.Models;
 public class ChatModel
 {
     [BsonId] public string ChatId { get; set; }
-    public string OwnerUsername { get; set; } 
-    
+    public string OwnerUsername { get; set; }
+
     public DateTime CreatedAt { get; set; }
-    public EncryptAlgo Algorithm  { get; set; } 
-    public EncryptMode CipherMode { get; set; } 
-    public PaddingMode Padding { get; set; } 
+    public EncryptAlgo Algorithm { get; set; }
+    public EncryptMode CipherMode { get; set; }
+    public PaddingMode Padding { get; set; }
+
+    public RoomData GetRoomData()
+    {
+        return new RoomData()
+        {
+            Padding = Padding,
+            CipherMode = CipherMode,
+            Algo = Algorithm
+        };
+    }
+
 }

@@ -156,17 +156,17 @@ public sealed class ChatSessionContext : IDisposable
         catch (RpcException ex)
         {
             Log.Error(ex, "gRPC ошибка при получении сообщений для чата {ChatId}", ChatId);
-            OnMessageError?.Invoke(ChatId, $"Ошибка gRPC: {ex.Status.Detail}");
+            await Dispatcher.UIThread.InvokeAsync(() =>  OnMessageError?.Invoke(ChatId, $"Ошибка gRPC: {ex.Status.Detail}"));
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Общая ошибка в цикле получения сообщений для чата {ChatId}", ChatId);
-            OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
+            await Dispatcher.UIThread.InvokeAsync(() =>  OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}"));
         }
         finally
         {
             Log.Information("Завершен цикл получения сообщений для чата {ChatId}", ChatId);
-            OnSubscriptionStopped?.Invoke(ChatId);
+            await Dispatcher.UIThread.InvokeAsync(() =>  OnSubscriptionStopped?.Invoke(ChatId));
         }
     }
     
