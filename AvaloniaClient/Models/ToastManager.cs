@@ -20,26 +20,34 @@ public class ToastManager
         _manager = manager;
     }
     
-    public void  TODO() // will be progress bar
+
+    public (INotificationMessage Notification, ProgressBar Progress) ShowDownloadDecryptProgress(Action cancelAction, int max = 100)
     {
-        _manager
-            .CreateMessage()
+        var progressBar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = max,
+            Value = 0,
+            Height = 4,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            IsHitTestVisible = false,
+            // Чтобы отображался процент как текст (опционально):
+            ShowProgressText = true,                      
+            ProgressTextFormat = "{1:0}%"
+        };
+
+        // Создаём уведомление и добавляем overlay
+        var notification = _manager.CreateMessage()
             .Accent("#F15B19")
-            .Background("#F15B19")
-            .HasHeader("Lost connection to server")
-            .HasMessage("Reconnecting...")
-            .WithOverlay(new ProgressBar
-            {
-                VerticalAlignment = VerticalAlignment.Bottom,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                Height = 3,
-                BorderThickness = new Thickness(0),
-                Foreground = new SolidColorBrush(Color.FromArgb(128, 255, 255, 255)),
-                Background = Brushes.Transparent,
-                IsIndeterminate = true,
-                IsHitTestVisible = false
-            })
+            .Background("#333")
+            .HasHeader("Загрузка и расшифровка...")
+            .HasMessage("Пожалуйста, подождите")
+            .WithOverlay(progressBar)
+            .Dismiss().WithButton("Отмена", _ => { cancelAction.Invoke(); })
+
             .Queue();
+
+        return (notification, progressBar);
     }
 
     

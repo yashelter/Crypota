@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,7 +74,7 @@ public partial class DashboardViewModel : ViewModelBase
 
     public DashboardViewModel(Action onLogout)
     {
-        client = ServerApiClient.Instance._client;
+        client = ServerApiClient.Instance.Client;
         _auth = Auth.Instance;
         _onLogout = onLogout ?? throw new ArgumentNullException(nameof(onLogout));
         _chatList = new ObservableCollection<ChatListItemModel>();
@@ -303,6 +304,13 @@ public partial class DashboardViewModel : ViewModelBase
         ctx.OnMessageReceived += MessageReceived;
         ctx.OnMessageError += (id, error) => _toast.ShowErrorMessageToast($"Ошибка {error}, в чате {id}");
         ctx.OnSubscriptionStarted +=(id) => _toast.ShowSuccessMessageToast($"Начался обмен сообщениями в чате {id}");
+
+        ctx.OnFileReceived += async (message, model) =>
+        {
+            CancellationTokenSource cts = new CancellationTokenSource();
+            await FileReceived(message, model, cts.Token);
+            
+        };
         
         ctx.OnSubscriptionStarted += (id) =>
         {
@@ -434,6 +442,31 @@ public partial class DashboardViewModel : ViewModelBase
         chat.LastMessageTime = message.Timestamp;
         Task.Run(() => AddMessageToBd(message));
     }
+    
+    private async Task FileReceived(Message response, ChatMessageModel message, CancellationToken ct)
+    {
+        Log.Debug("FileReceived: получаем файл");
+        var chatMessages = _allMessages[response.ChatId];
+        var chat = ChatList.First(c => c.Id == response.ChatId);
+        string savePath = Path.Combine(Config.Instance.TempPath, message.Content);
+        
+        
+        await _chatSessionContexts[response.ChatId].DownloadAndDecryptFile(
+            new FileRequest()
+            {
+                ChatId = response.ChatId,
+                FileName = response.Data
+            }, savePath, ct);
+        
+        _ = Task.Run(() => AddMessageToBd(message), ct);
+        
+        message.Content = savePath;
+        chat.LastMessage = "Получен Файл";
+        chat.LastMessageTime = message.Timestamp;
+        
+        chatMessages.Add(message);
+    }
+
 
     private void AddMessageToBd(ChatMessageModel message)
     {
@@ -448,6 +481,8 @@ public partial class DashboardViewModel : ViewModelBase
     }
 
 
+    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"];
+    
     [RelayCommand]
     private async Task SelectFile()
     {
@@ -474,7 +509,7 @@ public partial class DashboardViewModel : ViewModelBase
             {
                 new ("Изображения")
                 {
-                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif"]
+                    Patterns =  ImageExtensions.Select(ext => $"*{ext}").ToArray()
                 },
                 new ("Все файлы")
                 {
@@ -488,9 +523,12 @@ public partial class DashboardViewModel : ViewModelBase
             var file = files[0];
             var path = file.Path.AbsolutePath;
             Log.Information("Пользователь выбрал файл: {0}", path);
-            // TODO: дальше обрабатываем путь
 
-            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path, file.Name);
+            var ext = Path.GetExtension(path)?.ToLowerInvariant() ?? "";
+            var isImage = ImageExtensions.Contains(ext);
+            
+            MessageType type  = isImage ? MessageType.Image : MessageType.File;
+            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path,file.Name, type);
         }
 
     }

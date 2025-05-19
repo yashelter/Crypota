@@ -1,4 +1,8 @@
 ﻿using System;
+using System.IO;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using AvaloniaClient.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using LiteDB;
@@ -25,5 +29,22 @@ public partial class ChatMessageModel : ViewModelBase
         _timestamp = timestamp;
         _isSentByMe = isSentByMe;
         _messageType = messageType;
+    }
+    
+    public Bitmap? ImageBitmap
+    {
+        get
+        {
+            if (MessageType == MessageType.Image && File.Exists(Content!))
+            {
+                return new Bitmap(Content!);
+            }
+            else
+            {
+                var uri = new Uri($"avares://AvaloniaClient/Assets/no_file_icon.png");
+                using var stream = AssetLoader.Open(uri);
+                return new Bitmap(stream);
+            }
+        }
     }
 }

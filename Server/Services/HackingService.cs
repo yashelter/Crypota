@@ -314,14 +314,20 @@ public class HackingGateService : HackingGate.HackingGateBase
         EncryptedFile file = null!;
         bool initialized = false;
         string path = string.Empty;
+        string chatId = string.Empty;
+        ByteString filename = ByteString.Empty;
+        MessageType type = MessageType.File;
 
         await foreach (var chunk in requestStream.ReadAllAsync())
         {
             if (!initialized)
             {
                 Directory.CreateDirectory(_fileStorage.StorageDir);
-                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName}");
+                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName.ToStringUtf8()}");
                 file = new EncryptedFile(path);
+                filename = chunk.FileName;
+                chatId = chunk.ChatId;
+                type = chunk.Type;
                 initialized = true;
             }
             total += chunk.Data.Length;
@@ -329,20 +335,51 @@ public class HackingGateService : HackingGate.HackingGateBase
         }
         if (initialized)
         {
-            await _fileStorage.AddAsync(Path.GetFileName(path));
+            await _fileStorage.AddAsync(path);
             file.Dispose();
             _logger.LogInformation("[SendFile] Completed upload ChatId={ChatId}, Size={Size}", path, total);
+            if (!_sessions.Data.TryGetValue(chatId, out var session) || session.Subscribers.Count == 0)
+            {
+                _logger.LogWarning("[SendFile] No subscribers for ChatId={ChatId}", chatId);
+                return new FileAck() { Ok = false, Error = "No subscribers" };
+            }
+
+            string sender = context.UserState["username"] as string ?? string.Empty;
+
+            foreach (var sub in session.Subscribers)
+            {
+                if (sub.Peer == context.Peer) continue;
+                try
+                {
+                    _logger.LogInformation("Sending to {Sender} message about receiving the file type: {Type}", sender,  type);
+                    await sub.MsgWriter.WriteAsync(new Message()
+                    {
+                        ChatId = chatId,
+                        Data = filename,
+                        FromUsername = sender,
+                        Meta = total,
+                        Type = type
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[SendFile] Error sending message to Peer={Peer}, ChatId={ChatId}", sub.Peer, chatId);
+                    session.SessionCts.Cancel();
+                    return new FileAck { Ok = false, Error = "Delivery failed" };
+                }
+            }
         }
+        
         return new FileAck { Ok = true, TotalSize = total };
     }
 
     public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
     {
-        _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName);
-        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName}");
+        _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName.ToStringUtf8());
+        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName.ToStringUtf8()}");
         if (!await _fileStorage.ExistsAsync(fullPath).ConfigureAwait(false))
         {
-            _logger.LogWarning("[ReceiveFile] File not found {Path}", fullPath);
+            _logger.LogWarning("[ReceiveFile] File not found <{Path}>", fullPath);
             throw new RpcException(new Status(StatusCode.NotFound, "File not found"));
         }
         using var file = new EncryptedFile(fullPath);

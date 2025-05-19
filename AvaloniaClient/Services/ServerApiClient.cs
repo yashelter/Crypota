@@ -1,25 +1,22 @@
 ﻿using System;
-using AvaloniaClient.Models; // Убедитесь, что Config и Auth доступны
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Serilog;
-using StainsGate; // Пространство имен для HackingGateClient
+using StainsGate;
 
 namespace AvaloniaClient.Services;
 
-public class ServerApiClient : IDisposable // Добавляем IDisposable
+public sealed class ServerApiClient : IDisposable
 {
-    private readonly GrpcChannel _channel; // Делаем канал полем
-    public readonly HackingGate.HackingGateClient _client;
+    private readonly GrpcChannel _channel;
+    public readonly HackingGate.HackingGateClient Client;
     
-    // Ленивая инициализация для синглтона, чтобы избежать проблем с порядком инициализации статических полей
-    private static readonly Lazy<ServerApiClient> _lazyInstance =
-        new Lazy<ServerApiClient>(() => new ServerApiClient(Config.Instance.ServerAddress));
+    private static readonly Lazy<ServerApiClient> QlazyInstance =
+        new (() => new ServerApiClient(Config.Instance.ServerAddress));
 
-    public static ServerApiClient Instance => _lazyInstance.Value;
+    public static ServerApiClient Instance => QlazyInstance.Value;
     
-    // Конструктор теперь private, чтобы принудительно использовать Instance
     private ServerApiClient(string serverAddress)
     {
         if (string.IsNullOrWhiteSpace(serverAddress))
@@ -27,14 +24,13 @@ public class ServerApiClient : IDisposable // Добавляем IDisposable
             throw new ArgumentNullException(nameof(serverAddress));
         }
         
-        // Убираем using, канал теперь - поле класса
         _channel = GrpcChannel.ForAddress(serverAddress); 
         var invoker = _channel.Intercept(new AuthInterceptor(() => Auth.Instance.Token));
         
-        _client = new HackingGate.HackingGateClient(invoker);
+        Client = new HackingGate.HackingGateClient(invoker);
     }
     
-    private class AuthInterceptor : Interceptor
+    private sealed class AuthInterceptor : Interceptor
     {
         private readonly Func<string?> _getToken;
         public AuthInterceptor(Func<string?> getToken) => _getToken = getToken;
@@ -63,21 +59,20 @@ public class ServerApiClient : IDisposable // Добавляем IDisposable
         }
     }
 
-    // Реализация IDisposable
-    private bool _disposed = false;
+    private bool _disposed;
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_disposed) return;
 
         if (disposing)
         {
-            _channel?.Dispose();
+            _channel.Dispose();
         }
 
         _disposed = true;

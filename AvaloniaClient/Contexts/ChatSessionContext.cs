@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using AvaloniaClient.Models;
+using AvaloniaClient.Services;
 using Google.Protobuf;
 using Grpc.Core;
 using Serilog;
@@ -25,10 +26,13 @@ public sealed class ChatSessionContext : IDisposable
     public bool IsSubscribedToMessages => MessageReceivingCts != null && !MessageReceivingCts.IsCancellationRequested;
     
     public event Action<string, ChatMessageModel>? OnMessageReceived;
+    
+    public event Action<Message, ChatMessageModel>? OnFileReceived;
     public event Action<string, string>? OnMessageError;
     
     public event Action<string>? OnSubscriptionStarted;
     public event Action<string>? OnSubscriptionStopped;
+    public event Action<string>? OnFileUploadError;
 
 
     private readonly HackingGate.HackingGateClient _grpcClient;
@@ -119,12 +123,14 @@ public sealed class ChatSessionContext : IDisposable
                 if (message.Type == MessageType.NewIv)
                 {
                     _encryptingManager.SetIv(message.Data.ToByteArray());
+                    Log.Debug("Setting up new IV");
+                    continue;
                 }
 
                 byte[] decryptedData;
                 try
                 {
-                    decryptedData =  await _encryptingManager.DecryptMessage(message.Data.ToByteArray(), ct);
+                   decryptedData =  await _encryptingManager.DecryptMessage(message.Data.ToByteArray(), ct);
                 }
                 catch (Exception ex)
                 {
@@ -146,8 +152,14 @@ public sealed class ChatSessionContext : IDisposable
                     message.Type
                 );
 
-                // Уведомляем подписчиков (ViewModel) о новом сообщении в UI потоке
-                await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, chatMessage));
+                if (message.Type != MessageType.Message)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => OnFileReceived?.Invoke(message, chatMessage));
+                }
+                else
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, chatMessage));
+                }
             }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -204,8 +216,8 @@ public sealed class ChatSessionContext : IDisposable
                 Type = message.MessageType,
                 FromUsername = message.Sender
             });
-            Log.Debug("Sended message: {0}, to chat {1}", content, ChatId);
-            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, message.Sender, message.Content, message.Timestamp, true, MessageType.Message));
+            Log.Debug("Sended message: {0}, to chat {1}", message.Content, ChatId);
+            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, message.Sender, message.Content, message.Timestamp, true, message.MessageType));
         }
         catch (Exception ex)
         {
@@ -214,55 +226,102 @@ public sealed class ChatSessionContext : IDisposable
         }
     }
     
-    public async Task UploadAndEncryptFile(string loadPath, string filename, CancellationToken ct = default)
+    public async Task UploadAndEncryptFile(string loadPath, string filename,
+        MessageType type, CancellationToken ct = default)
     {
+        if (type == MessageType.Message)
+        {
+            Log.Warning("Нельзя отправить файлом сообщение");
+            return;
+        }
+        
         // TODO: много всяких проблем потенциально может быть
         
         Log.Debug("Начали отправку и шифрование файла {0}", filename);
-        EncryptedFileModel file = new EncryptedFileModel(loadPath);
-        using var call = _grpcClient.SendFile(cancellationToken: ct);
-
-        var result = await file.ReadNextFragmentAsync(ct);
-        
-        while (result is not null)
+        try
         {
-            byte[] data = result.Value.Data;
-            long offset = result.Value.Offset;
-            
-            data = await _encryptingManager.EncryptMessage(data, ct);
+            using EncryptedFileModel file = new EncryptedFileModel(loadPath);
 
-            await call.RequestStream.WriteAsync(new FileChunk()
+            var result = await file.ReadNextFragmentAsync(ct);
+            if (result == null)
             {
-                ChatId = ChatId,
-                Offset = offset,
-                Data = ByteString.CopyFrom(data),
-                FileName = filename
-            }, ct);
-            result = await file.ReadNextFragmentAsync(ct);
+                OnFileUploadError?.Invoke("Неподдерживаемый для отправки формат или нет доступа к файлу");
+                Log.Warning("Неподдерживаемый для отправки формат (not is FILE)");
+
+                return;
+            }
+            using var call = _grpcClient.SendFile(cancellationToken: ct);
+
+            while (result is not null)
+            {
+                byte[] data = result.Value.Data;
+                long offset = result.Value.Offset;
+
+                data = await _encryptingManager.EncryptMessage(data, ct);
+
+                await call.RequestStream.WriteAsync(new FileChunk()
+                {
+                    ChatId = ChatId,
+                    Offset = offset,
+                    Data = ByteString.CopyFrom(data),
+                    FileName = ByteString.CopyFromUtf8(filename),
+                    Type = type
+                }, ct);
+                result = await file.ReadNextFragmentAsync(ct);
+            }
+
+            await call.RequestStream.CompleteAsync();
+            var ack = await call.ResponseAsync;
+            
+            if (ack.Ok)
+            {
+                OnMessageReceived?.Invoke(ChatId, 
+                    new ChatMessageModel(ChatId,
+                        Auth.Instance.AuthenticatedUsername!,
+                        loadPath,
+                        DateTime.Now,
+                        true,
+                        type));
+                Log.Debug("Закончили отправку и шифрование файла {0}", filename);
+            }
+            else
+            {
+                Log.Warning("На сервере возникла ошибка {0}", ack.Error);
+
+            }
         }
-        
-        await call.RequestStream.CompleteAsync();
-        var ack = await call.ResponseAsync;
-        
-        Log.Debug("Закончили отправку и шифрование файла {0}", filename);
+        catch (RpcException ex)
+        {
+            Log.Error(ex, "Rpc exception during upload file");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unknown exception during upload file");
+        }
     }
 
-    public async Task DownloadAndDecryptFile(string savePath, FileRequest request, CancellationToken ct = default)
+    public async Task DownloadAndDecryptFile(FileRequest request, string savePath, CancellationToken ct = default)
     {
         // TODO: много всяких проблем потенциально может быть
-        
-        Log.Debug("Начали скачивание и дешифрование файла {0}", request.FileName);
-        EncryptedFileModel file = new EncryptedFileModel(savePath);
-        using var call = _grpcClient.ReceiveFile(request, cancellationToken: ct);
-        
-        await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
+        try
         {
-            byte[] data = await _encryptingManager.DecryptMessage(chunk.Data.ToByteArray(), ct);
-            await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
+            Log.Debug("Начали скачивание и дешифрование файла {0}", request.FileName);
+            using EncryptedFileModel file = new EncryptedFileModel(savePath);
+            using var call = _grpcClient.ReceiveFile(request, cancellationToken: ct);
+
+            await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
+            {
+                byte[] data = await _encryptingManager.DecryptMessage(chunk.Data.ToByteArray(), ct);
+                await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
+            }
+
+            Log.Debug("Закончили скачивание и дешифрование файла {0}", request.FileName);
         }
-        
-        Log.Debug("Закончили скачивание и дешифрование файла {0}", request.FileName);
-       // OnFileDownloaded?.Invoke(savePath);
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unknown exception during decrypt file");
+        }
+        // OnFileDownloaded?.Invoke(savePath);
     }
     
     

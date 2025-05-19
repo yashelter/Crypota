@@ -60,7 +60,8 @@ namespace AvaloniaClient.Views
         
         private async void OnFilePointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            if (sender is not TextBlock { DataContext: ChatMessageModel msg }) return;
+            if (sender is not Control ctrl || ctrl.DataContext is not ChatMessageModel msg) return;
+            
             var dlg = new SaveFileDialog
             {
                 Title = "Сохранить файл как",

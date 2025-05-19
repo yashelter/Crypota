@@ -116,6 +116,7 @@ message Message {
   string timestamp     = 3;
   MessageType type     = 4;
   string from_username = 5;
+  int64 meta           = 6;
 }
 
 // Подтверждение доставки сообщения
@@ -127,15 +128,16 @@ message MessageAck {
 // Запрос на получение файлового потока
 message FileRequest {
   string chat_id    = 1;
-  string file_name  = 2;   // зашифрованное имя файла
+  bytes file_name  = 2;   // зашифрованное имя файла
 }
 
 // Чанк файла
 message FileChunk {
   string chat_id    = 1;
-  string file_name  = 2;   // зашифрованное имя файла
+  bytes file_name  = 2;   // зашифрованное имя файла
   bytes  data       = 3;   // зашифрованная часть содержимого
   int64  offset     = 4;   // смещение в байтах для восстановления
+  MessageType type  = 5;
 }
 
 // Подтверждение приёма файла

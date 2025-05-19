@@ -7,7 +7,7 @@
              xmlns:models="using:AvaloniaClient.Models" 
              xmlns:controls="clr-namespace:Avalonia.Notification.Controls;assembly=Notification.Avalonia"
              xmlns:repositories="clr-namespace:AvaloniaClient.Repositories"
-             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
              x:DataType="vm:DashboardViewModel"
              x:Class="AvaloniaClient.Views.DashboardView">
 
@@ -48,20 +48,19 @@
    
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/> <!-- Sender -->
-                    <RowDefinition Height="Auto"/> <!-- Content -->
-                    <RowDefinition Height="Auto"/> <!-- Timestamp -->
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
                            IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
 
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                    <Image Source="/Assets/file_icon.png" Width="24" Height="24" VerticalAlignment="Center"/>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" PointerPressed="OnFilePointerPressed">
+                    <Image Source="/Assets/file_icon.png" Width="128" Height="128" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Filename}"
                                Classes="hyperlink"
                                Cursor="Hand"
-                               PointerPressed="OnFilePointerPressed"
                                VerticalAlignment="Center"
                                TextWrapping="Wrap"/>
                 </StackPanel>
@@ -78,16 +77,17 @@
                 Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/> <!-- Sender -->
-                    <RowDefinition Height="Auto"/> <!-- Content -->
-                    <RowDefinition Height="Auto"/> <!-- Timestamp -->
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
                            IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
 
-                <Image Grid.Row="1" Source="{Binding Content}"
-                       MaxWidth="250" MaxHeight="250"
+                <Image Grid.Row="1"
+                       Source="{Binding ImageBitmap}"
+                       MaxWidth="512" MaxHeight="512"
                        Stretch="Uniform"
                        Cursor="Hand"
                        PointerPressed="OnFilePointerPressed"/>
@@ -142,7 +142,6 @@
     </Design.DataContext>
 
     <Grid ColumnDefinitions="1*,3,3*">
-        <!-- Левая панель -->
         <DockPanel Grid.Column="0">
             <Border DockPanel.Dock="Top" Padding="5" BorderThickness="0,0,0,1" BorderBrush="LightGray">
                 <Button Content="Меню" Command="{Binding ToggleOptionsPanelCommand}" HorizontalAlignment="Stretch"/>

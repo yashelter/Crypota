@@ -12,6 +12,7 @@ public class Config
 
     public string ServerAddress { get; init; }
     public string AppDataBase { get; init; }
+    public string TempPath { get; init; }
 
     
     private static Config LoadConfig()
@@ -26,7 +27,14 @@ public class Config
         {
             PropertyNameCaseInsensitive = true
         });
+        
+        if (config == null) throw new InvalidOperationException("Не удалось десериализовать конфиг");
+        
+        if (!Directory.Exists(config.TempPath))
+        {
+            Directory.CreateDirectory(config.TempPath);
+        }
 
-        return config ?? throw new InvalidOperationException("Не удалось десериализовать конфиг");
+        return config;
     }
 }

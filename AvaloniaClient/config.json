@@ -1,4 +1,5 @@
 ﻿{
   "ServerAddress" : "http://localhost:5214",
-  "AppDataBase": "app.db"
+  "AppDataBase": "app.db",
+  "TempPath": "Temp/"
 }
