@@ -1,4 +1,6 @@
 ﻿using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Google.Protobuf;
 using Grpc.Core;
 using Google.Protobuf.WellKnownTypes;
@@ -7,6 +9,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Server.Models;
 using StainsGate;
+using PaddingMode = StainsGate.PaddingMode;
 
 namespace Server.Services;
 
@@ -306,6 +309,12 @@ public class HackingGateService : HackingGate.HackingGateBase
             _logger.LogInformation("[ReceiveMessages] Session ended for ChatId={ChatId}", request.ChatId);
         }
     }
+    private string SafeFileName(string original)
+    {
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(original));
+        return BitConverter.ToString(hash).Replace("-", "_").ToLowerInvariant();
+    }
 
     public override async Task<FileAck> SendFile(IAsyncStreamReader<FileChunk> requestStream, ServerCallContext context)
     {
@@ -323,7 +332,7 @@ public class HackingGateService : HackingGate.HackingGateBase
             if (!initialized)
             {
                 Directory.CreateDirectory(_fileStorage.StorageDir);
-                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{chunk.FileName.ToStringUtf8()}");
+                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{SafeFileName(chunk.FileName.ToStringUtf8())}");
                 file = new EncryptedFile(path);
                 filename = chunk.FileName;
                 chatId = chunk.ChatId;
@@ -376,7 +385,7 @@ public class HackingGateService : HackingGate.HackingGateBase
     public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
     {
         _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName.ToStringUtf8());
-        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{request.FileName.ToStringUtf8()}");
+        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{SafeFileName(request.FileName.ToStringUtf8())}");
         if (!await _fileStorage.ExistsAsync(fullPath).ConfigureAwait(false))
         {
             _logger.LogWarning("[ReceiveFile] File not found <{Path}>", fullPath);

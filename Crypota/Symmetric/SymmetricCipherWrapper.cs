@@ -21,15 +21,35 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         private PaddingMode _padding = PaddingMode.ISO10126;
         private ISymmetricCipher? _implementation;
         private readonly List<object> _additionalParams = new();
+        private int? _blockSize = null;
+        private int? _keySize = null;
         
-        public SymmetricCipherWrapperBuilder WithKey(byte[] key)
+        public SymmetricCipherWrapperBuilder WithBlockSize(int? size)
         {
+            if (size == null) return this;
+            _blockSize = size;
+            return this;
+        }
+
+        
+        public SymmetricCipherWrapperBuilder WithKeySize(int? size)
+        {
+            if (size == null) return this;
+            _keySize = size;
+            return this;
+        }
+
+        
+        public SymmetricCipherWrapperBuilder WithKey(byte[]? key)
+        {
+            if (key == null) return this;
             _key = key.ToArray();
             return this;
         }
         
-        public SymmetricCipherWrapperBuilder WithIv(byte[] iv)
+        public SymmetricCipherWrapperBuilder WithIv(byte[]? iv)
         {
+            if (iv == null) return this;
             _iv = iv.ToArray();
             return this;
         }
@@ -66,7 +86,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
             var keyCopy = _key?.ToArray();
             var ivCopy  = _iv?.ToArray();
             
-            return new SymmetricCipherWrapper(
+            var wrapper = new SymmetricCipherWrapper(
                 keyCopy,
                 _mode,
                 _padding,
@@ -74,13 +94,23 @@ public class SymmetricCipherWrapper : ISymmetricCipher
                 ivCopy,
                 _additionalParams.ToArray()
             );
+            if (_keySize != null)
+            {
+                wrapper.KeySize = _keySize.Value;
+            }
+
+            if (_blockSize != null)
+            {
+                wrapper.BlockSize = _blockSize.Value;
+            }
+            return wrapper;
         }
     }
     
     private byte[]? _key;
 
-    public int BlockSize { get;  }
-    public int KeySize { get;  }
+    public int BlockSize { get; set; }
+    public int KeySize { get; set; }
 
     private readonly byte[]? _iv;
     private readonly CipherMode _cipherMode;
@@ -194,12 +224,13 @@ public class SymmetricCipherWrapper : ISymmetricCipher
 
             case PaddingMode.ISO10126:
                 byte[] randomBytes = new byte[paddingBytesNeeded - 1];
-                 using (var rng = RandomNumberGenerator.Create()) {
+                 using (var rng = RandomNumberGenerator.Create()) 
+                 {
                       rng.GetBytes(randomBytes);
                  }
-                Array.Copy(randomBytes, 0, paddedBlock, startPos, randomBytes.Length);
-                paddedBlock[startPos + paddingBytesNeeded - 1] = (byte)paddingBytesNeeded;
-                break;
+                 Array.Copy(randomBytes, 0, paddedBlock, startPos, randomBytes.Length);
+                 paddedBlock[startPos + paddingBytesNeeded - 1] = (byte)paddingBytesNeeded;
+                 break;
             
             default:
                  throw new InvalidPaddingException($"Padding mode {_paddingMode} is not supported");
@@ -297,7 +328,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         int lastBlockStartIndex = fullBlocksCount * BlockSize;
         ReadOnlySpan<byte> lastPartSpan = message.Span.Slice(lastBlockStartIndex);
 
-        byte[]? paddedLastBlock = null;
+        byte[]? paddedLastBlock;
         int totalSizeInBytes;
 
         if (lastPartSpan.IsEmpty)
@@ -344,21 +375,12 @@ public class SymmetricCipherWrapper : ISymmetricCipher
 
     private BigInteger GetInitialCounter()
     {
-        byte[] init = new byte[_iv.Length + 1];
-                
-        Array.Copy(
-            sourceArray: _iv,
-            sourceIndex: 0,
-            destinationArray: init,
-            destinationIndex: 1,
-            length: _iv.Length
-        );
-                
-        return new BigInteger(init);
+        if (_iv == null) return BigInteger.Zero;
+        return new BigInteger(_iv, isUnsigned: true, isBigEndian: false);
     }
 
     
-    public async Task<byte[]> EncryptMessageAsync(Memory<byte> message)
+    public async Task<byte[]> EncryptMessageAsync(Memory<byte> message, CancellationToken ct = default)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
 
@@ -372,26 +394,26 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         switch (_cipherMode)
         {
             case CipherMode.ECB:
-                await EcbHandler.EncryptBlocksInPlaceAsync(buffer, this);
+                await EcbHandler.EncryptBlocksInPlaceAsync(buffer, this, ct);
                 break;
             case CipherMode.CBC:
-                CbcHandler.EncryptBlocksInPlace(buffer, this, _iv);
+                CbcHandler.EncryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.OFB:
-                OfbHandler.EncryptBlocksInPlace(buffer, this, _iv);
+                OfbHandler.EncryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.CFB:
-                CfbHandler.EncryptBlocksInPlace(buffer, this, _iv);
+                CfbHandler.EncryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.PCBC:
-                PcbcHandler.EncryptBlocksInPlace(buffer, this, _iv);
+                PcbcHandler.EncryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.CTR:
-                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1);
+                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1, ct);
                 break;
             case CipherMode.RD:    
                 await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, 
-                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta);
+                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta, ct);
                 break;
         }
         EncryptionState.Transform = EncryptionStateTransform.Idle;
@@ -399,7 +421,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
     }
     
     
-    public async Task<byte[]> DecryptMessageAsync(Memory<byte> message)
+    public async Task<byte[]> DecryptMessageAsync(Memory<byte> message, CancellationToken ct = default)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
 
@@ -415,26 +437,26 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         switch (_cipherMode)
         {
             case CipherMode.ECB:
-                await EcbHandler.DecryptBlocksInPlaceAsync(buffer, this);
+                await EcbHandler.DecryptBlocksInPlaceAsync(buffer, this, ct);
                 break;
             case CipherMode.CBC:
-                CbcHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                CbcHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.OFB:
-                OfbHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                OfbHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.CFB:
-                CfbHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                CfbHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.PCBC:
-                PcbcHandler.DecryptBlocksInPlace(buffer, this, _iv);
+                PcbcHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.CTR:
-                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1);
+                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1, ct);
                 break;
             case CipherMode.RD:    
                 await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, 
-                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta);
+                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta, ct);
                 break;
         }
         EncryptionState.Transform = EncryptionStateTransform.RemovingPadding;
@@ -467,14 +489,11 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         if (_iv != null)
             builder = builder.WithIv(_iv);
 
-        // Копируем все дополнительные параметры
         foreach (var param in _params.Values)
             builder = builder.AddParam(param);
 
-        // Собираем и возвращаем новую инстанцию
         var clone = builder.Build();
 
-        // Копируем внутреннее состояние шифрования
         clone.EncryptionState = new EncryptionState();
 
         return clone;

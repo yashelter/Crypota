@@ -80,7 +80,8 @@ public sealed class ChatSessionContext : IDisposable
             
        _auth.ResetDhState();
        await _auth.InitializeSessionAsync(externalCt);
-       _encryptingManager.SetKey(_auth.SharedSecret!);
+       
+       _encryptingManager.SetKey(_auth.SharedSecret);
 
        if (externalCt.IsCancellationRequested)
        {
@@ -264,7 +265,7 @@ public sealed class ChatSessionContext : IDisposable
                     ChatId = ChatId,
                     Offset = offset,
                     Data = ByteString.CopyFrom(data),
-                    FileName = ByteString.CopyFromUtf8(filename),
+                    FileName =  ByteString.CopyFrom(await _encryptingManager.EncryptMessage(ByteString.CopyFromUtf8(filename).ToByteArray(), ct)),
                     Type = type
                 }, ct);
                 result = await file.ReadNextFragmentAsync(ct);

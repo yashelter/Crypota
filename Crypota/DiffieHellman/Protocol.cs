@@ -7,7 +7,7 @@ namespace Crypota.DiffieHellman;
 
 public static class Protocol
 {
-    private static double probability = 0.999;
+    private static double probability = 0.9999;
     private const int Bitlen = 1024;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -108,16 +108,6 @@ public static class Protocol
 
     public static BigInteger GetBigIntegerFromArray(byte[] array)
     {
-        byte[] init = new byte[array.Length + 1];
-                
-        Array.Copy(
-            sourceArray: array,
-            sourceIndex: 0,
-            destinationArray: init,
-            destinationIndex: 1,
-            length: array.Length
-        );
-                
-        return new BigInteger(init, isUnsigned: true, isBigEndian: false);
+        return new BigInteger(array, isUnsigned: true, isBigEndian: false);
     }
 }

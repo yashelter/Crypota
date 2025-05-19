@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using System.Runtime.CompilerServices;
+using Crypota.CryptoMath;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;

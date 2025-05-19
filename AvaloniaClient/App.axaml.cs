@@ -35,7 +35,7 @@ public partial class App : Application
             .WriteTo.File(
                 logFilePath,
                 rollingInterval: RollingInterval.Day,
-                restrictedToMinimumLevel: LogEventLevel.Information,
+                restrictedToMinimumLevel: LogEventLevel.Debug,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
             )
             .CreateLogger();

@@ -1,10 +1,13 @@
 ﻿using System;
+using static Crypota.CryptoMath.SymmetricUtils;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Crypota.Interfaces;
 using Crypota.Symmetric;
 using Crypota.Symmetric.Rc6;
 using Crypota.Symmetric.Twofish;
+using Serilog;
 using StainsGate;
 using PaddingMode = StainsGate.PaddingMode;
 using Wrapper = Crypota.Symmetric;
@@ -12,18 +15,23 @@ namespace AvaloniaClient.Models;
 
 public class EncryptingManager
 {
-    private SymmetricCipherWrapper encoder;
-
+    private readonly SymmetricCipherWrapper.SymmetricCipherWrapperBuilder encoderBuilder;
+    
     public Action<int>? SetNewProgressState { get; set; } 
+    
 
-    public EncryptingManager(RoomData settings, byte[]? key, int blockSize=128, int keySize=192,  byte[]? iv = null, int? delta = null)
+    public EncryptingManager(RoomData settings, byte[]? key, int blockSize=128, int keySize=192, byte[]? iv = null, int? delta = null)
     {
-        encoder = new SymmetricCipherWrapper
-        (key, (Wrapper.CipherMode)settings.CipherMode, (Wrapper.PaddingMode)settings.Padding, GetImplementation(settings.Algo, blockSize, keySize), iv,
-            new SymmetricCipherWrapper.RandomDeltaParameters()
-            {
-                Delta = delta ?? 3
-            });
+        encoderBuilder = SymmetricCipherWrapper.CreateBuilder();
+        encoderBuilder = encoderBuilder.WithImplementation(GetImplementation(settings.Algo, blockSize, keySize)) // TODO: check
+            .WithCipherMode((Wrapper.CipherMode)settings.CipherMode)
+            .WithPadding((Wrapper.PaddingMode)settings.Padding)
+            .WithIv(iv)
+            .AddParam(new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = delta ?? 3 })
+            .WithKey(key)
+            .WithBlockSize(blockSize / 8)
+            .WithKeySize(keySize / 8);
+
     }
 
     private static ISymmetricCipher GetImplementation(EncryptAlgo algo, int blockSize, int keySize)
@@ -43,25 +51,33 @@ public class EncryptingManager
         }
     }
     
-    public Task SetKey(byte[] key)
+    public void SetKey(byte[]? sharedSecret)
     {
-        return Task.CompletedTask;
+        if (sharedSecret == null) { throw new ArgumentNullException(nameof(sharedSecret)); }
+        
+        byte[] okm = HKDF.DeriveKey(
+            HashAlgorithmName.SHA256,
+            ikm: sharedSecret,
+            outputLength: 24);
+        
+        Log.Debug("Set key for session: {Key}", ArrayToHexString(okm));
+        encoderBuilder.WithKey(okm);
     }
 
-    public Task SetIv(byte[] iv)
+    public void SetIv(byte[]? iv)
     {
-        return Task.CompletedTask;
+        encoderBuilder.WithIv(iv);
     }
 
     public async Task<byte[]> EncryptMessage(byte[] message, CancellationToken ct = default)
     {
-        return message;
+        var encoder = encoderBuilder.Build();
+        return await Task.Run(async () => await encoder.EncryptMessageAsync(message, ct), ct);
     }
 
     public async Task<byte[]> DecryptMessage(byte[] message, CancellationToken ct = default)
     {
-        return message;
+        var encoder = encoderBuilder.Build();
+        return await Task.Run(async () => await encoder.DecryptMessageAsync(message, ct), ct);
     }
-    // TODO: file management
-    // all should be maximum ansync
 }

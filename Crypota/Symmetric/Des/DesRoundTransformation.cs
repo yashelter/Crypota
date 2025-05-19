@@ -1,5 +1,5 @@
 ﻿using Crypota.Interfaces;
-using static Crypota.SymmetricUtils;
+using static Crypota.CryptoMath.SymmetricUtils;
 
 namespace Crypota.Symmetric.Des;
 

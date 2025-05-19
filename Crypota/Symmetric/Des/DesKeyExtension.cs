@@ -1,4 +1,5 @@
-﻿using Crypota.Symmetric.Exceptions;
+﻿using Crypota.CryptoMath;
+using Crypota.Symmetric.Exceptions;
 
 namespace Crypota.Symmetric.Des;
 

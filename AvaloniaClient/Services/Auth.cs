@@ -10,7 +10,7 @@ namespace AvaloniaClient.Services;
 
 public class Auth
 {
-    private readonly string _tokenSavePath = Path.Combine(AppContext.BaseDirectory, "auth.token");
+    private readonly string _tokenSavePath = Path.Combine(AppContext.BaseDirectory, "../auth.token");
     
     public string? Token { get; private set; }
     public string? AuthenticatedUsername { get; private set; }

@@ -1,7 +1,8 @@
-﻿using Crypota.Interfaces;
+﻿using Crypota.CryptoMath;
+using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Deal;
-using static Crypota.SymmetricUtils;
+using static SymmetricUtils;
 
 public class Deal128EncryptionTransformation : IEncryptionTransformation
 {

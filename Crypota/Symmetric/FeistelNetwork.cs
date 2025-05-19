@@ -1,7 +1,8 @@
-﻿using Crypota.Interfaces;
+﻿using Crypota.CryptoMath;
+using Crypota.Interfaces;
 
 namespace Crypota.Symmetric;
-using static Crypota.SymmetricUtils;
+using static SymmetricUtils;
 
 
 
