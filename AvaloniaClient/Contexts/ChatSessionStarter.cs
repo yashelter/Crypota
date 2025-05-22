@@ -101,6 +101,7 @@ public class ChatSessionStarter
         {
             Log.Error(ex, "Инициализация сессии для чата {0} была отменена.", ChatId);
             OnDhError?.Invoke(ChatId, "Операция отменена.");
+            ResetDhState();
         }
         catch (Exception ex)
         {
@@ -151,7 +152,8 @@ public class ChatSessionStarter
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
         {
             Log.Information(ex, "Стрим обмена DH для чата {0} был отменен.", ChatId);
-            // IsDhComplete останется false
+            ResetDhState();
+            throw;
         }
         catch (RpcException ex)
         {

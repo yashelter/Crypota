@@ -172,7 +172,7 @@
                                         <MenuItem.Header>
                                             <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <TextBlock Text="Владелец:" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding OwnerName}"/>
+                                                <TextBlock Text="{Binding CreatorName}"/>
                                             </StackPanel>
                                         </MenuItem.Header>
                                     </MenuItem>
@@ -181,6 +181,14 @@
                                             <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <TextBlock Text="Создан:" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding CreationDate, StringFormat='dd.MM.yyyy HH:mm'}"/>
+                                            </StackPanel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <MenuItem IsEnabled="False">
+                                        <MenuItem.Header>
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <TextBlock Text="Второй пользователь:" FontWeight="Normal"/>
+                                                <TextBlock Text="{Binding ChatMate}"/>
                                             </StackPanel>
                                         </MenuItem.Header>
                                     </MenuItem>
@@ -210,6 +218,8 @@
                                             </StackPanel>
                                         </MenuItem.Header>
                                     </MenuItem>
+                                    <Separator/>
+                                    <MenuItem Header="Сменить IV" Command="{Binding ChangeIvCommand}"/>
                                     <Separator/>
                                     <MenuItem Header="Удалить другого пользователя из чата" Command="{Binding RequestRemoveUserCommand}"/>
                                     <Separator/>

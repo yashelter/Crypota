@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using AvaloniaClient.Models;
 using AvaloniaClient.Services;
 using LiteDB;
@@ -16,6 +17,11 @@ public sealed class LiteDbContext : IDisposable
 
     public ILiteCollection<ChatModel> Chats => _db.GetCollection<ChatModel>("chats");
     public ILiteCollection<ChatMessageModel> Messages => _db.GetCollection<ChatMessageModel>("messages");
+
+    public static void ClearDb()
+    {
+        File.Delete(Config.Instance.AppDataBase);
+    }
 
     public void Dispose() => _db?.Dispose();
 }

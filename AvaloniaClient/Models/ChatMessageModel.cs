@@ -19,9 +19,9 @@ public partial class ChatMessageModel : ViewModelBase
     [BsonField("timestamp")][ObservableProperty] private DateTime _timestamp;
     [BsonField("isSentByMe")][ObservableProperty] private bool _isSentByMe;
     [BsonField("messageType")][ObservableProperty] private MessageType _messageType;
-    [BsonField("filename")] [ObservableProperty] private string? filename = null;
+    [BsonField("filename")] [ObservableProperty] private string? _filename = null;
 
-    public ChatMessageModel(string chatId, string sender, string content, DateTime timestamp, bool isSentByMe, MessageType messageType)
+    public ChatMessageModel(string chatId, string sender, string content, DateTime timestamp, bool isSentByMe, MessageType messageType, string? filename)
     {
         ChatId = chatId;
         _sender = sender;
@@ -29,6 +29,7 @@ public partial class ChatMessageModel : ViewModelBase
         _timestamp = timestamp;
         _isSentByMe = isSentByMe;
         _messageType = messageType;
+        _filename = filename;
     }
     
     public Bitmap? ImageBitmap

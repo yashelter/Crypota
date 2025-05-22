@@ -18,7 +18,7 @@ public class AuthApiClient : IDisposable
 
     public static AuthApiClient Instance => _lazyInstance.Value;
 
-    // Конструктор теперь private
+
     private AuthApiClient(string serverAddress)
     {
         if (string.IsNullOrWhiteSpace(serverAddress))

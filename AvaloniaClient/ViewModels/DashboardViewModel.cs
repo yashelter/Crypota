@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Input;
 using Avalonia.Notification;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -19,6 +18,8 @@ using AvaloniaClient.Models;
 using AvaloniaClient.Repositories;
 using AvaloniaClient.Services;
 using AvaloniaClient.Views;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Serilog;
 using StainsGate;
 
@@ -89,8 +90,23 @@ public partial class DashboardViewModel : ViewModelBase
     {
         using var repo = new ChatRepository();
 
-        var chats = await Task.Run(() => repo.GetAllChats().ToList());
+        var chatsLocal = await Task.Run(() => repo.GetAllChats().ToList());
+        
         var allMessages = new Dictionary<string, List<ChatMessageModel>>();
+        List<ChatModel> chats = new List<ChatModel>();
+        try
+        {
+            var chatsGlobal = client.GetAllJoinedRooms(new Empty());
+            await foreach (var chat in chatsGlobal.ResponseStream.ReadAllAsync())
+            {
+                chats.Add(new ChatModel(chat));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error while loading data, using local");
+            chats = chatsLocal;
+        }
 
         foreach (var chatId in chats.Select(ch => ch.ChatId))
         {
@@ -101,7 +117,12 @@ public partial class DashboardViewModel : ViewModelBase
         {
             foreach (var chat in chats)
             {
-                ChatList.Add(new ChatListItemModel(chat, DeleteChat, RequestRemoveUserFromChat));
+                ChatList.Add(new ChatListItemModel(chat)
+                {
+                    DeleteChatAction = DeleteChat,
+                    RequestRemoveUserAction = RequestRemoveUserFromChat,
+                    RequestChangeInitialVector = ChangeIvCommand
+                });
                 
                 _chatSessionContexts[chat.ChatId] = new ChatSessionContext(chat.ChatId, client, chat.GetRoomData());
                 InitChatSessionContext(_chatSessionContexts[chat.ChatId]);
@@ -111,6 +132,75 @@ public partial class DashboardViewModel : ViewModelBase
             SelectedChat = ChatList.FirstOrDefault();
             OnPropertyChanged(nameof(SelectedChat));
         });
+
+        _ = Task.Run(() => StartBackgroundUpdateLoop());
+    }
+    
+    private async Task StartBackgroundUpdateLoop(CancellationToken token = default)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    List<ChatModel> chats = new List<ChatModel>();
+
+                    using var chatsGlobal = client.GetAllJoinedRooms(new Empty());
+                    await foreach (var chat in chatsGlobal.ResponseStream.ReadAllAsync(cancellationToken: token))
+                    {
+                        chats.Add(new ChatModel(chat));
+                    }
+
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        ChatList
+                            .Where(x => chats.All(c => c.ChatId != x.Id))
+                            .ToList()
+                            .ForEach(DeleteChat);
+
+                        foreach (var chat in chats)
+                        {
+                            var t = ChatList.Where(c => chat.ChatId == c.Id).FirstOrDefault(defaultValue:null);
+                            if (t is not null)
+                            {
+                                // here should update any updatable fields
+                                t.MateName = chat.MateName;
+                            }
+                            else
+                            {
+                                ChatList.Add(new ChatListItemModel(chat)
+                                {
+                                    DeleteChatAction = DeleteChat,
+                                    RequestRemoveUserAction = RequestRemoveUserFromChat,
+                                    RequestChangeInitialVector = ChangeIvCommand
+                                });
+                                _chatSessionContexts[chat.ChatId] =
+                                    new ChatSessionContext(chat.ChatId, client, chat.GetRoomData());
+                                InitChatSessionContext(_chatSessionContexts[chat.ChatId]);
+
+                                using var repo = new ChatRepository();
+                                repo.AddChat(chat);
+                            }
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error while loading data, using local");
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(2), token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Log.Warning("Фоновый цикл обновления остановлен.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Ошибка в фоновом цикле: {ExMessage}", ex.Message);
+        }
     }
     
     partial void OnSelectedChatChanged(ChatListItemModel? oldValue, ChatListItemModel? newValue)
@@ -177,7 +267,9 @@ public partial class DashboardViewModel : ViewModelBase
                 () => 
                 {
                     Log.Debug("Пользователь нажал 'Отменить подключение' для чата {ChatId}", chatId);
-                    cts.Cancel(); 
+                    cts.Cancel();
+                    context.MessageReceivingCts?.Cancel();
+                    context.CancelMessageSubscription();
                 }
             );
 
@@ -263,19 +355,21 @@ public partial class DashboardViewModel : ViewModelBase
             return;
         }
 
+
         var newChat = new ChatListItemModel(
             room.ChatId,
             Auth.Instance.AuthenticatedUsername!,
             "Чат создан, нет сообщений",
+            "Никого",
             DateTime.Now,
-            roomData,
-            DeleteChat,
-            RequestRemoveUserFromChat
-        )
+            roomData)
         {
-            OwnerName = _auth.AuthenticatedUsername!,
-            CreationDate = DateTime.Now
+            CreationDate = DateTime.Now,
+            DeleteChatAction = DeleteChat,
+            RequestRemoveUserAction = RequestRemoveUserFromChat,
+            RequestChangeInitialVector = ChangeIvCommand
         };
+        
         _chatSessionContexts[room.ChatId] = new ChatSessionContext(room.ChatId, client, roomData);
         InitChatSessionContext(_chatSessionContexts[room.ChatId]);
 
@@ -305,11 +399,26 @@ public partial class DashboardViewModel : ViewModelBase
         ctx.OnMessageError += (id, error) => _toast.ShowErrorMessageToast($"Ошибка {error}, в чате {id}");
         ctx.OnSubscriptionStarted +=(id) => _toast.ShowSuccessMessageToast($"Начался обмен сообщениями в чате {id}");
 
+        ctx.OnIvSet += (id) => _toast.ShowSuccessMessageToast($"Установлен новый IV для чата {id}");
+        
+
         ctx.OnFileReceived += async (message, model) =>
         {
             CancellationTokenSource cts = new CancellationTokenSource();
-            await FileReceived(message, model, cts.Token);
-            
+            var (notification, bar) = _toast.ShowDownloadEncryptProgress("Загрузка и расшифровка...", () => { cts.Cancel(); });
+            try
+            {
+                await FileReceived(message, model, bar, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Exception inside OnFileReceived");
+            }
+            finally
+            {
+                _toast.DismissMessage(notification);
+                cts.Dispose();
+            }
         };
         
         ctx.OnSubscriptionStarted += (id) =>
@@ -337,6 +446,8 @@ public partial class DashboardViewModel : ViewModelBase
         
         ctx.SessionStarter.OnDhError +=(id, error) => 
             _toast.ShowSuccessMessageToast($"Ошибка обмена '{error}' параметрами ДХ в чате {id}");
+        
+        
     }
     
     
@@ -380,9 +491,19 @@ public partial class DashboardViewModel : ViewModelBase
                 ChatId = chatIdToJoin,
             });
             
-            var newJoinedChat = new ChatListItemModel(room.ChatId, $"{chatIdToJoin}", "Вы присоединились к чату.", 
-                    DateTime.Now, room.Settings, DeleteChat, RequestRemoveUserFromChat)
-                { OwnerName = $"{room.OwnerUsername}", CreationDate = DateTime.Now };
+            var newJoinedChat = new ChatListItemModel(room.ChatId,
+                room.OwnerUsername,
+                "Вы присоединились к чату.",
+                room.OwnerUsername,
+                DateTime.Now,
+                room.Settings)
+            {
+                CreationDate = DateTime.Now,
+                DeleteChatAction = DeleteChat,
+                RequestRemoveUserAction = RequestRemoveUserFromChat,
+                RequestChangeInitialVector = ChangeIvCommand
+                
+            };
 
             ChatList.Add(newJoinedChat);
             _ = Task.Run(() => AddChatToBd(new ChatModel() 
@@ -426,7 +547,7 @@ public partial class DashboardViewModel : ViewModelBase
         if (!CanSendMessage() || SelectedChat == null || SelectedChatMessages == null) return;
 
         var messageContent = NewMessageText!.Trim();
-        var newMessage = new ChatMessageModel(SelectedChat.Id, _auth.AuthenticatedUsername!, messageContent, DateTime.Now, true, MessageType.Message);
+        var newMessage = new ChatMessageModel(SelectedChat.Id, _auth.AuthenticatedUsername!, messageContent, DateTime.Now, true, MessageType.Message, null);
         await _chatSessionContexts[SelectedChat.Id].SendMessage(newMessage);
         NewMessageText = string.Empty;
         Log.Information("DashboardViewModel: Отправлено сообщение в чат '{ChatName}': {Message}", SelectedChat.Id, messageContent);
@@ -443,7 +564,7 @@ public partial class DashboardViewModel : ViewModelBase
         Task.Run(() => AddMessageToBd(message));
     }
     
-    private async Task FileReceived(Message response, ChatMessageModel message, CancellationToken ct)
+    private async Task FileReceived(Message response, ChatMessageModel message, ProgressBar progress, CancellationToken ct)
     {
         Log.Debug("FileReceived: получаем файл");
         var chatMessages = _allMessages[response.ChatId];
@@ -451,16 +572,19 @@ public partial class DashboardViewModel : ViewModelBase
         string savePath = Path.Combine(Config.Instance.TempPath, message.Content);
         
         
-        await _chatSessionContexts[response.ChatId].DownloadAndDecryptFile(
+        var status = await _chatSessionContexts[response.ChatId].DownloadAndDecryptFile(
             new FileRequest()
             {
                 ChatId = response.ChatId,
                 FileName = response.Data
-            }, savePath, ct);
+            }, savePath, progress, ct);
+
+        if (!status) return;
         
         _ = Task.Run(() => AddMessageToBd(message), ct);
         
         message.Content = savePath;
+        message.Filename = message.Content;
         chat.LastMessage = "Получен Файл";
         chat.LastMessageTime = message.Timestamp;
         
@@ -528,7 +652,11 @@ public partial class DashboardViewModel : ViewModelBase
             var isImage = ImageExtensions.Contains(ext);
             
             MessageType type  = isImage ? MessageType.Image : MessageType.File;
-            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path,file.Name, type);
+            CancellationTokenSource cts = new();
+            var (notification, bar) = _toast.ShowDownloadEncryptProgress("Загрузка и зашифровка ...", () => cts.Cancel());
+            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path,file.Name, type, bar, cts.Token);
+            _toast.DismissMessage(notification);
+            cts.Dispose();
         }
 
     }
@@ -536,49 +664,120 @@ public partial class DashboardViewModel : ViewModelBase
 
     private void DeleteChat(ChatListItemModel chatToDelete)
     {
-        if (chatToDelete == null) return;
-
         Log.Information("DashboardViewModel: Запрос на удаление чата '{0}' (ID: {1})", chatToDelete.Id, chatToDelete.Id);
+        try
+        {
+            ChatList.Remove(chatToDelete);
+            if (_allMessages.Remove(chatToDelete.Id))
+            {
+                Log.Debug("DashboardViewModel: Сообщения для чата {0} удалены.", chatToDelete.Id);
+            }
 
-        ChatList.Remove(chatToDelete);
-        if (_allMessages.Remove(chatToDelete.Id))
-        {
-            Log.Debug("DashboardViewModel: Сообщения для чата {0} удалены.", chatToDelete.Id);
-        }
+            if (SelectedChat == chatToDelete)
+            {
+                SelectedChat = ChatList.FirstOrDefault();
+                Log.Debug("DashboardViewModel: Удален выбранный чат, выбран новый: {0}", SelectedChat?.Id ?? "Нет");
+            }
 
-        if (SelectedChat == chatToDelete)
-        {
-            SelectedChat = ChatList.FirstOrDefault();
-            Log.Debug("DashboardViewModel: Удален выбранный чат, выбран новый: {0}", SelectedChat?.Id ?? "Нет");
+            client.CloseRoomAsync(new RoomPassKey()
+            {
+                ChatId = chatToDelete.Id,
+            });
         }
-        client.CloseRoomAsync(new RoomPassKey()
+        catch (Exception ex)
         {
-            ChatId = chatToDelete.Id,
-        });
-        using var repo = new ChatRepository();
-        repo.DeleteChat(chatToDelete.Id);
+            Log.Error(ex, "DashboardViewModel: error during delete chat");
+        }
+        finally
+        {
+            using var repo = new ChatRepository();
+            repo.DeleteChat(chatToDelete.Id);
+        }
         
         Log.Information("DashboardViewModel: Чат '{0}' удален из списка.", chatToDelete.Id);
     }
 
 
-    private void RequestRemoveUserFromChat(ChatListItemModel chatContext)
+    private async void RequestRemoveUserFromChat(ChatListItemModel chatContext)
     {
-        if (chatContext == null) return;
+        try
+        {
+            Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{0}' (ID: {1})",
+                chatContext.Id, chatContext.Id);
 
-        Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{0}' (ID: {1})", chatContext.Id, chatContext.Id);
-        // TODO:
+            await client.KickFromRoomAsync(new RoomPassKey()
+            {
+                ChatId = chatContext.Id,
+            });
+            _toast.ShowSuccessMessageToast("Второй пользователь удалён из чата");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "DashboardViewModel: RequestRemoveUserFromChat got error");
+        }
     }
     
+    
+    public async void ChangeIvCommand(ChatListItemModel chatContext)
+    {
+        Log.Debug("ChangeIvCommand: entering");
+        await _chatSessionContexts[chatContext.Id].GenerateNewIv(chatContext);
+    }
+    
+    [Obsolete("Not do any actions")]
     public void OnMessageWasClicked(ChatMessageModel msg)
     {
-        // Предполагаем, что коллекция — ObservableCollection и ChatMessageModel реализует INotifyPropertyChanged
-        // Тогда менять msg.Content достаточно, UI обновит автоматически
-        // TODO: либо расшифровываем тут, либо тут ничего
+        Log.Debug("OnMessageWasClicked: entering");
+        // The idea was to decrypt after clicking, but changed to auto-decrypt
     }
 
-    public void OnFileWasClicked(ChatMessageModel msg)
+    public async Task OnFileWasClicked(ChatMessageModel msg)
     {
-        Log.Debug("OnFileWasClicked: entering");
+         Log.Debug("OnFileWasClicked: entering for file '{FileName}'", msg.Filename);
+
+        if (msg == null || string.IsNullOrWhiteSpace(msg.Filename))
+        {
+            Log.Warning("OnFileWasClicked: ChatMessageModel or Filename is null/empty.");
+            return;
+        }
+        
+        var window = ((IClassicDesktopStyleApplicationLifetime?) Application.Current?.ApplicationLifetime)?.MainWindow;
+        var topLevel = TopLevel.GetTopLevel(window);
+        
+        if (topLevel == null)
+        {
+            Log.Error("OnFileWasClicked: Could not get TopLevel.");
+            return;
+        }
+
+        var filePickerSaveOptions = new FilePickerSaveOptions
+        {
+            Title = "Сохранить файл как...",
+            SuggestedFileName = msg.Filename != null ? Path.GetFileName(msg.Filename) : "file",
+            ShowOverwritePrompt = true,
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Исходное расширение")
+                {
+                    Patterns = [$"*{(msg.Filename != null ? Path.GetExtension(msg.Filename) : ".unknown")}"]
+                },
+                FilePickerFileTypes.All,
+                FilePickerFileTypes.ImageAll,
+            ]
+        };
+
+        Log.Debug("OnFileWasClicked: Opening save file dialog...");
+        IStorageFile? file = await topLevel.StorageProvider.SaveFilePickerAsync(filePickerSaveOptions);
+
+        if (file != null)
+        {
+            Log.Information("OnFileWasClicked: User selected file: {FilePath}", file.Path.AbsolutePath);
+            await Task.Run(() => File.Copy(msg.Content, file.Path.AbsolutePath, overwrite:true));
+            _toast.ShowSuccessMessageToast($"Файл {file.Name} был сохранён");
+        }
+        else
+        {
+            Log.Debug("OnFileWasClicked: Save file dialog was cancelled by the user.");
+        }
     }
 }

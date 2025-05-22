@@ -1,6 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 using Google.Protobuf;
 using Grpc.Core;
 using Google.Protobuf.WellKnownTypes;
@@ -16,9 +14,9 @@ namespace Server.Services;
 // MongoDB settings
 public class MongoSettings
 {
-    public string ConnectionString { get; set; }
-    public string Database { get; set; }
-    public string RoomsCollection { get; set; }
+    public string ConnectionString { get; set; } = null!;
+    public string Database { get; set; } = null!;
+    public string RoomsCollection { get; set; } = null!;
 }
 
 // Room entity
@@ -26,13 +24,14 @@ public class Room
 {
     [BsonId]
     public ObjectId Id { get; set; }
-    public string ChatId { get; set; }
-    public string OwnerUsername { get; set; }
+    public string ChatId { get; set; } = null!;
+    public string OwnerUsername { get; set; } = null!;
+    public string? SubscriberUsername { get; set; }
     public DateTime CreationTime { get; set; }
     public int ParticipantCount { get; set; }
-    public EncryptAlgo algo { get; set; }
-    public EncryptMode cipherMode { get; set; }
-    public PaddingMode paddingMode { get; set; }
+    public EncryptAlgo Algo { get; set; } 
+    public EncryptMode CipherMode { get; set; }
+    public PaddingMode PaddingMode { get; set; }
 }
 
 
@@ -47,16 +46,45 @@ public class Subscriber
     }
 }
 
+public class PendingFileTransfer
+{
+    public string ChatId { get; }
+    public ByteString OriginalFileName { get; }
+    public MessageType OriginalType { get; }
+    public string SenderUsername { get; }
+
+    public required FileChunk FirstChunk { get; init; }
+    
+    public required  IAsyncEnumerator<FileChunk> SenderStream { get; init; } 
+    public TaskCompletionSource<long> UploadCompleteTcs { get; } 
+    public CancellationTokenSource LifetimeCts { get; }
+
+    public long TotalSize { get; set; } = 0;
+
+    public PendingFileTransfer(string chatId, ByteString fileName, MessageType type, string senderUsername)
+    {
+        ChatId = chatId;
+        OriginalFileName = fileName;
+        OriginalType = type;
+        SenderUsername = senderUsername;
+        UploadCompleteTcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        LifetimeCts = new CancellationTokenSource();
+    }
+}
+
 // Represents a two-way chat session with cancellation support
 public class ChatSession
 {
-    public List<Subscriber> Subscribers { get; } = new (2);
+    public List<Subscriber> MessageSubscribers { get; } = new (2);
+    
+    public ConcurrentDictionary<string, PendingFileTransfer> FileTransfers { get; } = new();
+
     public readonly CancellationTokenSource SessionCts = new CancellationTokenSource();
 }
 
 public sealed class SessionStore
 {
-    public ConcurrentDictionary<string, ChatSession> Data { get; } = new();
+    public ConcurrentDictionary<string, ChatSession> ChatSessions { get; } = new();
 }
 
 public class PendingDh
@@ -76,7 +104,6 @@ public class HackingGateService : HackingGate.HackingGateBase
 {
     private readonly ILogger<HackingGateService> _logger;
     private readonly IMongoCollection<Room> _rooms;
-    private readonly IFileStorage _fileStorage;
     private readonly IConstraint _constraint;
     private readonly SessionStore _sessions;
     private readonly DhStateStore _pendingDh;
@@ -84,7 +111,6 @@ public class HackingGateService : HackingGate.HackingGateBase
     public HackingGateService(
         IConfiguration config,
         ILogger<HackingGateService> logger,
-        IFileStorage fileStorage,
         IConstraint constraint,
         SessionStore sessions,
         DhStateStore pendingDh)
@@ -95,7 +121,6 @@ public class HackingGateService : HackingGate.HackingGateBase
         var db = client.GetDatabase(settings.Database);
         _rooms = db.GetCollection<Room>(settings.RoomsCollection);
         _logger = logger;
-        _fileStorage = fileStorage;
         _constraint = constraint;
         _sessions = sessions;
         _pendingDh = pendingDh;
@@ -103,78 +128,143 @@ public class HackingGateService : HackingGate.HackingGateBase
 
     public override async Task<RoomPassKey> CreateRoom(RoomData request, ServerCallContext context)
     {
-        _logger.LogInformation("[CreateRoom] Algo={Algo}, Mode={Mode}, Padding={Padding}", request.Algo, request.CipherMode, request.Padding);
+        _logger.LogInformation("[CreateRoom] Algo={Algo}, Mode={Mode}, Padding={Padding}", request.Algo,
+            request.CipherMode, request.Padding);
         if (request == null)
         {
             _logger.LogError("[CreateRoom] Invalid room data");
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid room data"));
         }
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
         var room = new Room
         {
             ChatId = Guid.NewGuid().ToString(),
-            OwnerUsername = context.Peer,
+            OwnerUsername = username,
             CreationTime = DateTime.UtcNow,
-            ParticipantCount = 0,
-            algo = request.Algo,
-            cipherMode = request.CipherMode,
-            paddingMode = request.Padding,
+            ParticipantCount = 1,
+            Algo = request.Algo,
+            CipherMode = request.CipherMode,
+            PaddingMode = request.Padding,
         };
         await _rooms.InsertOneAsync(room);
         _logger.LogInformation("[CreateRoom] Created room {ChatId}", room.ChatId);
         return new RoomPassKey { ChatId = room.ChatId };
     }
-
-    public override async Task<Empty> CloseRoom(RoomPassKey request, ServerCallContext context)
-    {
-        _logger.LogInformation("[CloseRoom] Closing room {ChatId}", request.ChatId);
-        await _rooms.DeleteOneAsync(r => r.ChatId == request.ChatId);
-
-        if (_sessions.Data.TryRemove(request.ChatId, out var session))
-        {
-            session.SessionCts.Cancel();
-            _logger.LogInformation("[CloseRoom] Session cancelled for {ChatId}", request.ChatId);
-        }
-        _pendingDh.Data.TryRemove(request.ChatId, out _);
-        return new Empty();
-    }
+    
 
     public override async Task<RoomInfo> JoinRoom(RoomPassKey request, ServerCallContext context)
     {
         _logger.LogInformation("[JoinRoom] Peer={Peer}, ChatId={ChatId}", context.Peer, request.ChatId);
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+
         var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
         if (room == null)
         {
             _logger.LogWarning("[JoinRoom] Room not found: {ChatId}", request.ChatId);
             throw new RpcException(new Status(StatusCode.NotFound, "Room not found"));
         }
-        var update = Builders<Room>.Update.Inc(r => r.ParticipantCount, 1);
-        var result = await _rooms.UpdateOneAsync(r => r.ChatId == request.ChatId, update);
-        if (result.ModifiedCount == 0)
+
+        if (room.ParticipantCount != 1)
         {
-            _logger.LogError("[JoinRoom] Failed to increment participant count for {ChatId}", request.ChatId);
-            throw new RpcException(new Status(StatusCode.Internal, "Failed to update participant count"));
+            _logger.LogWarning("[JoinRoom] Participant count mismatch: {ChatId}", request.ChatId);
+            throw new RpcException(new Status(StatusCode.Unavailable, "Participant count mismatch"));
         }
+
+        lock (_rooms)
+        {
+            var update = Builders<Room>.Update.Set(r => r.ParticipantCount, 2)
+                .Set(r => r.SubscriberUsername, username);
+            
+            var result = _rooms.UpdateOne(r => r.ChatId == request.ChatId, update);
+            
+            if (result.ModifiedCount == 0)
+            {
+                _logger.LogError("[JoinRoom] Failed to increment participant count for {ChatId}", request.ChatId);
+                throw new RpcException(new Status(StatusCode.Internal, "Failed to update participant count"));
+            }
+        }
+
         _logger.LogInformation("[JoinRoom] Joined room {ChatId}", request.ChatId);
         return new RoomInfo
         {
             ChatId = room.ChatId,
             OwnerUsername = room.OwnerUsername,
             CreationTime = room.CreationTime.ToString("o"),
-            Settings = new RoomData { Algo = room.algo, CipherMode = room.cipherMode, Padding = room.paddingMode }
+            OtherSubscriber = room.SubscriberUsername ?? "Никто",
+            Settings = new RoomData { Algo = room.Algo, CipherMode = room.CipherMode, Padding = room.PaddingMode }
         };
+    }
+
+    public override async Task<Empty> KickFromRoom(RoomPassKey request, ServerCallContext context)
+    {
+        _logger.LogInformation("[KickFromRoom] Peer={Peer} leaving ChatId={ChatId}", context.Peer, request.ChatId);
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+
+        var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
+
+        if (room.OwnerUsername != username)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "Need to be owner of room for this action"));
+        }
+
+        lock (_rooms)
+        {
+            if (room.ParticipantCount == 2)
+            {
+                var update = Builders<Room>.Update.Set(r => r.ParticipantCount, 1)
+                    .Set(r => r.SubscriberUsername, null);
+
+                _rooms.UpdateOne(r => r.ChatId == request.ChatId, update);       
+                _pendingDh.Data.TryRemove(request.ChatId, out _);
+            }
+        }
+
+        if (_sessions.ChatSessions.TryRemove(request.ChatId, out var session))
+        {
+            await session.SessionCts.CancelAsync();
+            _pendingDh.Data.TryRemove(request.ChatId, out _);
+            _logger.LogInformation("[KickFromRoom] Session cancelled for ChatId={ChatId}", request.ChatId);
+        }
+
+        return new Empty();
+    }
+
+    public override async Task<Empty> CloseRoom(RoomPassKey request, ServerCallContext context)
+    {
+        _logger.LogInformation("[CloseRoom] Closing room {ChatId}", request.ChatId);
+        return await LeaveRoom(request, context);
     }
 
     public override async Task<Empty> LeaveRoom(RoomPassKey request, ServerCallContext context)
     {
         _logger.LogInformation("[LeaveRoom] Peer={Peer} leaving ChatId={ChatId}", context.Peer, request.ChatId);
-        var update = Builders<Room>.Update.Inc(r => r.ParticipantCount, -1);
-        await _rooms.UpdateOneAsync(r => r.ChatId == request.ChatId, update);
-
-        if (_sessions.Data.TryRemove(request.ChatId, out var session))
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
+        var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
+        
+        if (room.OwnerUsername == username)
         {
-            session.SessionCts.Cancel();
+            await _rooms.DeleteOneAsync(r => r.ChatId == request.ChatId);
+        }
+        else
+        {
+            var update = Builders<Room>.Update.Set(r => r.ParticipantCount, 1).
+                Set(r => r.SubscriberUsername, null);
+            await _rooms.UpdateOneAsync(r => r.ChatId == request.ChatId, update);
+        }
+
+        if (_sessions.ChatSessions.TryRemove(request.ChatId, out var session))
+        {
+            await session.SessionCts.CancelAsync();
+            _pendingDh.Data.TryRemove(request.ChatId, out _);
             _logger.LogInformation("[LeaveRoom] Session cancelled for ChatId={ChatId}", request.ChatId);
         }
+
         return new Empty();
     }
 
@@ -186,14 +276,26 @@ public class HackingGateService : HackingGate.HackingGateBase
         return Task.FromResult(new DiffieHellmanData { GValue = g, PValue = p });
     }
 
-    public override async Task ExchangeDhParameters(ExchangeData request, IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
+    public override async Task ExchangeDhParameters(ExchangeData request,
+        IServerStreamWriter<ExchangeData> responseStream, ServerCallContext context)
     {
         var chatId = request.ChatId;
+        
+        string username = context.UserState["username"] as string ?? 
+                          throw new RpcException(new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
+        var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
+
+        if (room == null || (room.SubscriberUsername != username && room.OwnerUsername != username))
+        {
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room to send one"));
+        }
+        
         _logger.LogDebug("[ExchangeDh] Start DH for ChatId={ChatId}, Peer={Peer}", chatId, context.Peer);
 
         var pending = new PendingDh { Request = request, ResponseStream = responseStream };
 
-        using var reg = context.CancellationToken.Register(() =>
+        await using var reg = context.CancellationToken.Register(() =>
         {
             pending.Cts.Cancel();
             pending.Tcs.TrySetCanceled();
@@ -209,7 +311,7 @@ public class HackingGateService : HackingGate.HackingGateBase
             {
                 await pending.Tcs.Task.ConfigureAwait(false);
             }
-            catch (TaskCanceledException ex)
+            catch (TaskCanceledException)
             {
                 _logger.LogInformation("[ExchangeDh] First peer DH cancelled for ChatId={ChatId}", chatId);
                 return;
@@ -241,11 +343,13 @@ public class HackingGateService : HackingGate.HackingGateBase
                 {
                     _logger.LogError(ex, "[ExchangeDh] Error during DH exchange for ChatId={ChatId}", chatId);
                     first.Tcs.TrySetException(ex);
+                    await first.Cts.CancelAsync();
                     throw new RpcException(new Status(StatusCode.Internal, "DH exchange failed"));
                 }
             }
             else
             {
+                if (first is not null) await first.Cts.CancelAsync();
                 _logger.LogError("[ExchangeDh] Pending DH not found for ChatId={ChatId}", chatId);
                 throw new RpcException(new Status(StatusCode.Internal, "DH state lost"));
             }
@@ -257,12 +361,23 @@ public class HackingGateService : HackingGate.HackingGateBase
     public override async Task<MessageAck> SendMessage(Message request, ServerCallContext context)
     {
         _logger.LogDebug("[SendMessage] ChatId={ChatId}, From={From}", request.ChatId, request.FromUsername);
-        if (!_sessions.Data.TryGetValue(request.ChatId, out var session) || session.Subscribers.Count == 0)
+        if (!_sessions.ChatSessions.TryGetValue(request.ChatId, out var session) || session.MessageSubscribers.Count == 0)
         {
             _logger.LogWarning("[SendMessage] No subscribers for ChatId={ChatId}", request.ChatId);
             return new MessageAck { Ok = false, Error = "No subscribers" };
         }
-        foreach (var sub in session.Subscribers)
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
+        var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
+
+        if (room == null || (room.SubscriberUsername != username && room.OwnerUsername != username))
+        {
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room to send one"));
+        }
+
+
+        foreach (var sub in session.MessageSubscribers)
         {
             if (sub.Peer == context.Peer) continue;
             try
@@ -271,33 +386,50 @@ public class HackingGateService : HackingGate.HackingGateBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[SendMessage] Error sending message to Peer={Peer}, ChatId={ChatId}", sub.Peer, request.ChatId);
-                session.SessionCts.Cancel();
+                _logger.LogError(ex, "[SendMessage] Error sending message to Peer={Peer}, ChatId={ChatId}", sub.Peer,
+                    request.ChatId);
+                await session.SessionCts.CancelAsync();
                 return new MessageAck { Ok = false, Error = "Delivery failed" };
             }
         }
+
         return new MessageAck { Ok = true };
     }
 
-    public override async Task ReceiveMessages(RoomPassKey request, IServerStreamWriter<Message> responseStream, ServerCallContext context)
+    public override async Task ReceiveMessages(RoomPassKey request, IServerStreamWriter<Message> responseStream,
+        ServerCallContext context)
     {
         _logger.LogInformation("[ReceiveMessages] Peer={Peer} joining ChatId={ChatId}", context.Peer, request.ChatId);
-        var session = _sessions.Data.GetOrAdd(request.ChatId, _ => new ChatSession());
-        lock (session)
+        var session = _sessions.ChatSessions.GetOrAdd(request.ChatId, _ => new ChatSession());
+        
+        string username = context.UserState["username"] as string ?? throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
+        var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync();
+
+        if (room == null || (room.SubscriberUsername != username && room.OwnerUsername != username))
         {
-            if (session.Subscribers.Count >= 2)
-            {
-                _logger.LogWarning("[ReceiveMessages] ChatId={ChatId} full, rejecting Peer={Peer}", request.ChatId, context.Peer);
-                return;
-            }
-            session.Subscribers.Add(new Subscriber(responseStream, context.Peer));
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room"));
         }
 
-        using var reg = context.CancellationToken.Register(() =>
+        lock (session)
         {
-            _logger.LogWarning("[ReceiveMessages] Peer disconnected Peer={Peer}, ChatId={ChatId}", context.Peer, request.ChatId);
+            if (session.MessageSubscribers.Count >= 2)
+            {
+                _logger.LogWarning("[ReceiveMessages] ChatId={ChatId} full, rejecting Peer={Peer}", request.ChatId,
+                    context.Peer);
+                return;
+            }
+
+            session.MessageSubscribers.Add(new Subscriber(responseStream, context.Peer));
+        }
+
+        await using var reg = context.CancellationToken.Register(() =>
+        {
+            _logger.LogWarning("[ReceiveMessages] Peer disconnected Peer={Peer}, ChatId={ChatId}", context.Peer,
+                request.ChatId);
             session.SessionCts.Cancel();
-            _sessions.Data.TryRemove(request.ChatId, out _);
+            _sessions.ChatSessions.TryRemove(request.ChatId, out _);
         });
 
         try
@@ -309,97 +441,227 @@ public class HackingGateService : HackingGate.HackingGateBase
             _logger.LogInformation("[ReceiveMessages] Session ended for ChatId={ChatId}", request.ChatId);
         }
     }
-    private string SafeFileName(string original)
-    {
-        using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(original));
-        return BitConverter.ToString(hash).Replace("-", "_").ToLowerInvariant();
-    }
 
-    public override async Task<FileAck> SendFile(IAsyncStreamReader<FileChunk> requestStream, ServerCallContext context)
-    {
-        _logger.LogInformation("[SendFile] Peer={Peer} starting file upload", context.Peer);
-        long total = 0;
-        EncryptedFile file = null!;
-        bool initialized = false;
-        string path = string.Empty;
-        string chatId = string.Empty;
-        ByteString filename = ByteString.Empty;
-        MessageType type = MessageType.File;
-
-        await foreach (var chunk in requestStream.ReadAllAsync())
+        public override async Task<FileAck> SendFile(IAsyncStreamReader<FileChunk> requestStream, ServerCallContext context)
         {
-            if (!initialized)
+            _logger.LogInformation("[SendFile] Peer={Peer} starting file upload", context.Peer);
+            
+
+            var enumerator = requestStream.ReadAllAsync().GetAsyncEnumerator();
+
+            if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
             {
-                Directory.CreateDirectory(_fileStorage.StorageDir);
-                path = Path.Combine(_fileStorage.StorageDir, $"{chunk.ChatId}.{SafeFileName(chunk.FileName.ToStringUtf8())}");
-                file = new EncryptedFile(path);
-                filename = chunk.FileName;
-                chatId = chunk.ChatId;
-                type = chunk.Type;
-                initialized = true;
+                return new FileAck { Ok = false, Error = "Empty stream" };
             }
-            total += chunk.Data.Length;
-            await file.AppendFragmentAtOffsetAsync(chunk.Offset, chunk.Data.ToByteArray()).ConfigureAwait(false);
-        }
-        if (initialized)
-        {
-            await _fileStorage.AddAsync(path);
-            file.Dispose();
-            _logger.LogInformation("[SendFile] Completed upload ChatId={ChatId}, Size={Size}", path, total);
-            if (!_sessions.Data.TryGetValue(chatId, out var session) || session.Subscribers.Count == 0)
+            
+            FileChunk chunk = enumerator.Current;
+
+            string chatId = chunk.ChatId;
+            string filename = $"{chunk.ChatId}.{chunk.FileName}";
+            string username = context.UserState["username"] as string ?? "Error while parsing name (JWT)";
+
+            if (!_sessions.ChatSessions.TryGetValue(chatId, out var session) || session.MessageSubscribers.Count != 2)
             {
-                _logger.LogWarning("[SendFile] No subscribers for ChatId={ChatId}", chatId);
-                return new FileAck() { Ok = false, Error = "No subscribers" };
+                return new FileAck { Ok = false, Error = "Not existing connection between users" };
+            }
+            var room = await _rooms.Find(r => r.ChatId == chatId).FirstOrDefaultAsync();
+
+            if (room == null || (room.SubscriberUsername != username && room.OwnerUsername != username))
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room"));
             }
 
-            string sender = context.UserState["username"] as string ?? string.Empty;
+            
+            PendingFileTransfer fileTransfer;
 
-            foreach (var sub in session.Subscribers)
+            lock (session)
             {
-                if (sub.Peer == context.Peer) continue;
+                if (session.FileTransfers.ContainsKey(filename))
+                {
+                    return new FileAck { Ok = false, Error = "Already sending file with provided filename" };
+                }
+                fileTransfer = session.FileTransfers.GetOrAdd(filename, _ =>
+                    new PendingFileTransfer(chunk.ChatId, chunk.FileName, chunk.Type, username)
+                    {
+                        FirstChunk = chunk,
+                        SenderStream = enumerator
+                    });
+            }
+            
+            await using var reg = context.CancellationToken.Register(async void ( ) =>
+            {
                 try
                 {
-                    _logger.LogInformation("Sending to {Sender} message about receiving the file type: {Type}", sender,  type);
-                    await sub.MsgWriter.WriteAsync(new Message()
-                    {
-                        ChatId = chatId,
-                        Data = filename,
-                        FromUsername = sender,
-                        Meta = total,
-                        Type = type
-                    }).ConfigureAwait(false);
+                    _logger.LogWarning("[SendFile] Peer disconnected Peer={Peer}, ChatId={ChatId}", context.Peer, chatId);
+                    session.FileTransfers.TryRemove(filename, out _);
+                    await fileTransfer.LifetimeCts.CancelAsync();
+                    fileTransfer.UploadCompleteTcs.TrySetCanceled(fileTransfer.LifetimeCts.Token); 
+                    await enumerator.DisposeAsync();
                 }
-                catch (Exception ex)
+                catch (Exception e)
                 {
-                    _logger.LogError(ex, "[SendFile] Error sending message to Peer={Peer}, ChatId={ChatId}", sub.Peer, chatId);
-                    session.SessionCts.Cancel();
-                    return new FileAck { Ok = false, Error = "Delivery failed" };
+                    _logger.LogError(e, "[SendFile] Session ended for ChatId={ChatId}", chatId);
                 }
+            });
+
+            try
+            {
+                foreach (var sub in session.MessageSubscribers)
+                {
+                    if (sub.Peer == context.Peer) continue;
+                    try
+                    {
+                        await sub.MsgWriter.WriteAsync(new Message()
+                        {
+                            ChatId = chatId,
+                            Data = chunk.FileName,
+                            FromUsername = username,
+                            Meta = chunk.Meta,
+                            Type = chunk.Type,
+                        }).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[SendFile] Error sending message to Peer={Peer}, ChatId={ChatId}",
+                            sub.Peer, chatId);
+                        await session.SessionCts.CancelAsync();
+                        return new FileAck { Ok = false, Error = "Delivery failed" };
+                    }
+                }
+
+                long totalSizeFromReceiver = await fileTransfer.UploadCompleteTcs.Task
+                    .WaitAsync(fileTransfer.LifetimeCts.Token)
+                    .ConfigureAwait(false);
+
+                await enumerator.DisposeAsync();
+                session.FileTransfers.TryRemove(filename, out _);
+                return new FileAck { Ok = true, TotalSize = totalSizeFromReceiver};
+
             }
+            catch (TaskCanceledException)
+            {
+                _logger.LogError("[SendFile] Upload stopped for={ChatId}", chatId);
+                fileTransfer.UploadCompleteTcs.TrySetCanceled(context.CancellationToken.IsCancellationRequested ? context.CancellationToken : new CancellationToken(true));
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "[SendFile] Upload stopped for={ChatId}", chatId);
+                fileTransfer.UploadCompleteTcs.TrySetException(e);
+            } finally 
+            {
+                await enumerator.DisposeAsync();
+                session.FileTransfers.TryRemove(filename, out _);
+            }
+            
+            return new FileAck { Ok = false, TotalSize = fileTransfer.TotalSize };
         }
         
-        return new FileAck { Ok = true, TotalSize = total };
-    }
 
-    public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
-    {
-        _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName.ToStringUtf8());
-        var fullPath = Path.Combine(_fileStorage.StorageDir, $"{request.ChatId}.{SafeFileName(request.FileName.ToStringUtf8())}");
-        if (!await _fileStorage.ExistsAsync(fullPath).ConfigureAwait(false))
+        public override async Task ReceiveFile(FileRequest request, IServerStreamWriter<FileChunk> responseStream, ServerCallContext context)
         {
-            _logger.LogWarning("[ReceiveFile] File not found <{Path}>", fullPath);
-            throw new RpcException(new Status(StatusCode.NotFound, "File not found"));
+            _logger.LogInformation("[ReceiveFile] Peer={Peer} requesting file {File}", context.Peer, request.FileName);
+            
+            string username = context.UserState["username"] as string ?? throw new RpcException(
+                new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+        
+            var room = await _rooms.Find(r => r.ChatId == request.ChatId).FirstOrDefaultAsync(context.CancellationToken);
+
+            if (room == null || (room.SubscriberUsername != username && room.OwnerUsername != username))
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room"));
+            }
+            
+            var filename = $"{request.ChatId}.{request.FileName}";
+
+            if (!_sessions.ChatSessions.TryGetValue(request.ChatId, out var session) || session.MessageSubscribers.Count != 2)
+            {
+                _logger.LogWarning("[ReceiveFile] No subscribers for ChatId={ChatId}", request.ChatId);
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "No peer connection"));
+            }
+            
+            if (!session.FileTransfers.TryGetValue(filename, out var fileTransfer))
+            {
+                _logger.LogWarning("[ReceiveFile] No subscribers for ChatId={ChatId}", request.ChatId);
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "No such file transfer"));
+            }
+
+            await using var reg = context.CancellationToken.Register(( ) =>
+            { 
+                _logger.LogWarning("[ReceiveFile] Peer disconnected");
+                fileTransfer.LifetimeCts.Cancel();
+                fileTransfer.UploadCompleteTcs.TrySetException(
+                    new RpcException(new Status(StatusCode.Aborted, "aborted by other peer")));
+            });
+
+            try
+            {
+                fileTransfer.LifetimeCts.Token.ThrowIfCancellationRequested();
+                fileTransfer.TotalSize += fileTransfer.FirstChunk.Data.Length;
+                
+                await responseStream.WriteAsync(fileTransfer.FirstChunk);
+                while (await fileTransfer.SenderStream.MoveNextAsync())
+                {
+                    fileTransfer.LifetimeCts.Token.ThrowIfCancellationRequested();
+                    var chunk = fileTransfer.SenderStream.Current;
+                    await responseStream.WriteAsync(chunk, context.CancellationToken);
+                    fileTransfer.TotalSize += chunk.Data.Length;
+                }
+
+                fileTransfer.LifetimeCts.Token.ThrowIfCancellationRequested();
+                fileTransfer.UploadCompleteTcs.TrySetResult(fileTransfer.TotalSize);
+            }
+
+            catch (OperationCanceledException op) 
+            {
+                _logger.LogWarning(op, "[ReceiveFile] Operation was canceled during file streaming for ChatId={ChatId}, Filename={Filename}", request.ChatId, request.FileName);
+                if (!fileTransfer.LifetimeCts.IsCancellationRequested)
+                {
+                    await fileTransfer.LifetimeCts.CancelAsync();
+                }
+                fileTransfer.UploadCompleteTcs.TrySetCanceled(op.CancellationToken.IsCancellationRequested ? op.CancellationToken : new CancellationToken(true));
+                throw; 
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ReceiveFile] Error during file streaming for ChatId={ChatId}, Filename={Filename}", request.ChatId, request.FileName);
+                if (!fileTransfer.LifetimeCts.IsCancellationRequested)
+                {
+                    await fileTransfer.LifetimeCts.CancelAsync();
+                }
+                fileTransfer.UploadCompleteTcs.TrySetException(
+                    ex is RpcException rpcEx ? rpcEx : new RpcException(new Status(StatusCode.Internal, $"ReceiveFile failed: {ex.Message}"))
+                );
+                throw;
+            }
+            _logger.LogInformation("[ReceiveFile] Completed streaming file {File}", request.FileName);
         }
-        using var file = new EncryptedFile(fullPath);
-        while (!context.CancellationToken.IsCancellationRequested)
+
+        public override async Task GetAllJoinedRooms(Empty request, IServerStreamWriter<RoomInfo> responseStream, ServerCallContext context)
         {
-            var fragment = await file.ReadNextFragmentAsync().ConfigureAwait(false);
-            if (fragment == null) break;
-            var (data, offset) = fragment.Value;
-            var chunk = new FileChunk { ChatId = request.ChatId, FileName = request.FileName, Data = ByteString.CopyFrom(data), Offset = offset };
-            await responseStream.WriteAsync(chunk).ConfigureAwait(false);
+            string from = context.UserState["username"] as string ?? throw new RpcException(
+                new Status(StatusCode.Unauthenticated, "No JWT info inside"));
+            
+            _logger.LogTrace("[GetAllJoinedRooms] Peer={Peer} requesting all rooms {File}", context.Peer, from);
+
+            var rooms = await _rooms.Find(r => r.OwnerUsername == from || r.SubscriberUsername == from).ToListAsync();
+
+            foreach (var room in rooms)
+            {
+                await responseStream.WriteAsync(new RoomInfo()
+                {
+                    ChatId = room.ChatId,
+                    CreationTime = room.CreationTime.ToString("o"),
+                    OwnerUsername = room.OwnerUsername,
+                    OtherSubscriber = room.SubscriberUsername ?? "Никто",
+                    Settings = new RoomData()
+                    {
+                        Algo = room.Algo,
+                        CipherMode = room.CipherMode,
+                        Padding = room.PaddingMode
+                    }
+                });
+            }
+            
+            _logger.LogTrace("[GetAllJoinedRooms] Completed streaming all rooms {File}", from);
         }
-        _logger.LogInformation("[ReceiveFile] Completed streaming file {File}", request.FileName);
-    }
 }

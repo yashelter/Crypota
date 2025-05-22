@@ -20,9 +20,14 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         private CipherMode _mode = CipherMode.RD;
         private PaddingMode _padding = PaddingMode.ISO10126;
         private ISymmetricCipher? _implementation;
-        private readonly List<object> _additionalParams = new();
+        private readonly List<object> _additionalParams = [];
         private int? _blockSize = null;
         private int? _keySize = null;
+
+        public int? GetBlockSize()
+        {
+            return _blockSize;
+        }
         
         public SymmetricCipherWrapperBuilder WithBlockSize(int? size)
         {

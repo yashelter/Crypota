@@ -22,6 +22,12 @@ public class EncryptedFileModel : IDisposable
     }
 
 
+    public long GetFullSize()
+    {
+        FileInfo fileInfo = new FileInfo(_path);
+        return fileInfo.Length;
+    }
+
     /// <summary>
     /// Записывает байты в файл, начиная с указанного смещения.
     /// </summary>

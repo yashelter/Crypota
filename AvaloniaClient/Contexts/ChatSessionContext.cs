@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using AvaloniaClient.Models;
 using AvaloniaClient.Services;
@@ -22,7 +23,7 @@ public sealed class ChatSessionContext : IDisposable
     public EncryptMode Mode { get; set; }
     public PaddingMode ChatPadding { get; set; }
 
-    public CancellationTokenSource? MessageReceivingCts { get; private set; }
+    public CancellationTokenSource? MessageReceivingCts { get; private set; } = null;
     public bool IsSubscribedToMessages => MessageReceivingCts != null && !MessageReceivingCts.IsCancellationRequested;
     
     public event Action<string, ChatMessageModel>? OnMessageReceived;
@@ -33,6 +34,7 @@ public sealed class ChatSessionContext : IDisposable
     public event Action<string>? OnSubscriptionStarted;
     public event Action<string>? OnSubscriptionStopped;
     public event Action<string>? OnFileUploadError;
+    public event Action<string>? OnIvSet;
 
 
     private readonly HackingGate.HackingGateClient _grpcClient;
@@ -74,13 +76,18 @@ public sealed class ChatSessionContext : IDisposable
         {
             Log.Warning("Попытка открыть уже открытую сессию");
             return;
-        }
+        } 
+        _auth.ResetDhState();
+        await _auth.InitializeSessionAsync(externalCt);
         
-        MessageReceivingCts = new CancellationTokenSource();
-            
-       _auth.ResetDhState();
-       await _auth.InitializeSessionAsync(externalCt);
+        if (!_auth.IsDhComplete)
+        {
+            Log.Warning("Не удалось открыть сессию");
+            throw new OperationCanceledException("Session was not exchanged with DH params");
+        }
        
+        MessageReceivingCts = new CancellationTokenSource();
+
        _encryptingManager.SetKey(_auth.SharedSecret);
 
        if (externalCt.IsCancellationRequested)
@@ -136,7 +143,7 @@ public sealed class ChatSessionContext : IDisposable
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Ошибка расшифровки сообщения в чате {0}", ChatId);
-                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, "Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message)));
+                    await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, "Система", "[Ошибка расшифровки сообщения]", DateTime.UtcNow, false, MessageType.Message, null)));
                     continue;
                 }
 
@@ -150,11 +157,13 @@ public sealed class ChatSessionContext : IDisposable
                     messageContent,
                     timestamp,
                     false,
-                    message.Type
+                    message.Type,
+                    null
                 );
 
                 if (message.Type != MessageType.Message)
                 {
+                    chatMessage.Filename = messageContent;
                     await Dispatcher.UIThread.InvokeAsync(() => OnFileReceived?.Invoke(message, chatMessage));
                 }
                 else
@@ -195,6 +204,37 @@ public sealed class ChatSessionContext : IDisposable
         }
     }
 
+    public async Task GenerateNewIv(ChatListItemModel chat)
+    {
+        if (!IsSubscribedToMessages)
+        {
+            Log.Warning("Нельзя отправить сообщение без обмена ключом");
+            OnMessageError?.Invoke(ChatId, $"Нельзя отправить сообщение без обмена ключом");
+            return;
+        }
+
+        try
+        {
+            byte[] iv = _encryptingManager.GenerateNewIv();
+            await _grpcClient.SendMessageAsync(new Message()
+            {
+                ChatId = this.ChatId,
+                Data = ByteString.CopyFrom(iv),
+                Timestamp = DateTime.Now.ToString("o"),
+                Type = MessageType.NewIv,
+                FromUsername = Auth.Instance.AuthenticatedUsername!
+            });
+            Log.Debug("Sent new iv: {0}, to chat {1}", iv, ChatId);
+            OnIvSet?.Invoke(ChatId);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Не удалось отправить сообщение {0}", ChatId);
+            OnMessageError?.Invoke(ChatId, $"Внутренняя ошибка: {ex.Message}");
+        }
+    }
+
+    
 
     public async Task SendMessage(ChatMessageModel message)
     {
@@ -218,7 +258,7 @@ public sealed class ChatSessionContext : IDisposable
                 FromUsername = message.Sender
             });
             Log.Debug("Sended message: {0}, to chat {1}", message.Content, ChatId);
-            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, message.Sender, message.Content, message.Timestamp, true, message.MessageType));
+            OnMessageReceived?.Invoke(ChatId, new ChatMessageModel( ChatId, message.Sender, message.Content, message.Timestamp, true, message.MessageType, null));
         }
         catch (Exception ex)
         {
@@ -228,7 +268,7 @@ public sealed class ChatSessionContext : IDisposable
     }
     
     public async Task UploadAndEncryptFile(string loadPath, string filename,
-        MessageType type, CancellationToken ct = default)
+        MessageType type, ProgressBar progress, CancellationToken ct = default)
     {
         if (type == MessageType.Message)
         {
@@ -242,7 +282,7 @@ public sealed class ChatSessionContext : IDisposable
         try
         {
             using EncryptedFileModel file = new EncryptedFileModel(loadPath);
-
+            long size = file.GetFullSize();
             var result = await file.ReadNextFragmentAsync(ct);
             if (result == null)
             {
@@ -252,13 +292,16 @@ public sealed class ChatSessionContext : IDisposable
                 return;
             }
             using var call = _grpcClient.SendFile(cancellationToken: ct);
-
+            
+            progress.Maximum = size;
+            
             while (result is not null)
             {
                 byte[] data = result.Value.Data;
                 long offset = result.Value.Offset;
 
                 data = await _encryptingManager.EncryptMessage(data, ct);
+                progress.Value += data.Length;
 
                 await call.RequestStream.WriteAsync(new FileChunk()
                 {
@@ -266,7 +309,8 @@ public sealed class ChatSessionContext : IDisposable
                     Offset = offset,
                     Data = ByteString.CopyFrom(data),
                     FileName =  ByteString.CopyFrom(await _encryptingManager.EncryptMessage(ByteString.CopyFromUtf8(filename).ToByteArray(), ct)),
-                    Type = type
+                    Type = type,
+                    Meta = size,
                 }, ct);
                 result = await file.ReadNextFragmentAsync(ct);
             }
@@ -282,7 +326,8 @@ public sealed class ChatSessionContext : IDisposable
                         loadPath,
                         DateTime.Now,
                         true,
-                        type));
+                        type,
+                        filename));
                 Log.Debug("Закончили отправку и шифрование файла {0}", filename);
             }
             else
@@ -301,7 +346,7 @@ public sealed class ChatSessionContext : IDisposable
         }
     }
 
-    public async Task DownloadAndDecryptFile(FileRequest request, string savePath, CancellationToken ct = default)
+    public async Task<bool> DownloadAndDecryptFile(FileRequest request, string savePath, ProgressBar progress, CancellationToken ct = default)
     {
         // TODO: много всяких проблем потенциально может быть
         try
@@ -312,8 +357,10 @@ public sealed class ChatSessionContext : IDisposable
 
             await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
             {
+                progress.Maximum = chunk.Meta;
                 byte[] data = await _encryptingManager.DecryptMessage(chunk.Data.ToByteArray(), ct);
                 await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
+                progress.Value += chunk.Data.Length;
             }
 
             Log.Debug("Закончили скачивание и дешифрование файла {0}", request.FileName);
@@ -321,8 +368,9 @@ public sealed class ChatSessionContext : IDisposable
         catch (Exception ex)
         {
             Log.Error(ex, "Unknown exception during decrypt file");
+            return false;
         }
-        // OnFileDownloaded?.Invoke(savePath);
+        return true;
     }
     
     

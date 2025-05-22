@@ -1,4 +1,5 @@
-﻿using Avalonia;
+﻿using System;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using AvaloniaClient.ViewModels;
@@ -47,10 +48,6 @@ namespace AvaloniaClient.Views
             if (sender is TextBlock tb && tb.DataContext is ChatMessageModel msg)
             {
                 Log.Information("Клик по сообщению: {0}", msg.Content);
-
-                var newText = $"[EDITED] {msg.Content}";
-                msg.Content = newText;
-
                 if (DataContext is DashboardViewModel vm)
                 {
                     vm.OnMessageWasClicked(msg);
@@ -61,20 +58,15 @@ namespace AvaloniaClient.Views
         private async void OnFilePointerPressed(object? sender, PointerPressedEventArgs e)
         {
             if (sender is not Control ctrl || ctrl.DataContext is not ChatMessageModel msg) return;
-            
-            var dlg = new SaveFileDialog
+            if ( (DataContext is not DashboardViewModel vm)) return;
+            try
             {
-                Title = "Сохранить файл как",
-                InitialFileName = msg.Filename
-            };
-                
-            var window = ((IClassicDesktopStyleApplicationLifetime) Application.Current.ApplicationLifetime)?.MainWindow;
-            var path = await dlg.ShowAsync(window);
-
-            if (string.IsNullOrEmpty(path) || (DataContext is not DashboardViewModel vm)) return;
-            
-            Log.Information("Passing save method to vm", path);
-            vm.OnFileWasClicked(msg);
+                await vm.OnFileWasClicked(msg);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "OnFilePointerPressed: error [OnFileWasClicked]");
+            }
         }
     }
 }

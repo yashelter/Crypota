@@ -21,7 +21,7 @@ public class ToastManager
     }
     
 
-    public (INotificationMessage Notification, ProgressBar Progress) ShowDownloadDecryptProgress(Action cancelAction, int max = 100)
+    public (INotificationMessage Notification, ProgressBar Progress) ShowDownloadEncryptProgress(string message, Action cancelAction, int max = 100)
     {
         var progressBar = new ProgressBar
         {
@@ -29,22 +29,18 @@ public class ToastManager
             Maximum = max,
             Value = 0,
             Height = 4,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-            IsHitTestVisible = false,
-            // Чтобы отображался процент как текст (опционально):
-            ShowProgressText = true,                      
-            ProgressTextFormat = "{1:0}%"
+            VerticalAlignment = VerticalAlignment.Bottom,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsHitTestVisible = false
         };
 
         // Создаём уведомление и добавляем overlay
         var notification = _manager.CreateMessage()
             .Accent("#F15B19")
             .Background("#333")
-            .HasHeader("Загрузка и расшифровка...")
-            .HasMessage("Пожалуйста, подождите")
+            .HasMessage(message)
             .WithOverlay(progressBar)
             .Dismiss().WithButton("Отмена", _ => { cancelAction.Invoke(); })
-
             .Queue();
 
         return (notification, progressBar);

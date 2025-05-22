@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Data;
+using AvaloniaClient.Contexts;
 using Serilog;
 
 namespace AvaloniaClient.Services;
@@ -95,14 +96,21 @@ public class Auth
         var jwt = handler.ReadJwtToken(Token);
         GetValidUsername();
 
-        return jwt.ValidTo > DateTime.UtcNow
+        var result =  jwt.ValidTo > DateTime.UtcNow
             ? new Optional<string>(Token)
             : Optional<string>.Empty;
+
+        if (!result.HasValue)
+        {
+            LiteDbContext.ClearDb();
+        }
+        return result;
     }
 
 
     public async Task SaveToken(string token)
     {
+        LiteDbContext.ClearDb();
         await File.WriteAllTextAsync(_tokenSavePath, token).ConfigureAwait(false);
         Token = token;
         GetValidUsername();
@@ -114,6 +122,7 @@ public class Auth
         Token = null;
         AuthenticatedUsername = null;
         File.Delete(_tokenSavePath);
+        LiteDbContext.ClearDb();
     }
     
 
@@ -132,6 +141,7 @@ public class Auth
                 Log.Error(ex, "Ошибка при загрузке токена из файла.");
                 Token = null;
                 AuthenticatedUsername = null;
+                LiteDbContext.ClearDb();
             }
         }
         else
@@ -139,6 +149,7 @@ public class Auth
             Log.Information("Файл токена не найден.");
             Token = null;
             AuthenticatedUsername = null;
+            LiteDbContext.ClearDb();
         }
         
     }

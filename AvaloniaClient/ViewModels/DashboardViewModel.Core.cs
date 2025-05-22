@@ -93,23 +93,31 @@ public partial class DashboardViewModel : ViewModelBase
         _toast = new ToastManager(Manager); // Безопасно
 
 
-        _selectedChat = new ChatListItemModel("чат", "имя создателя", "пусто",
+        _selectedChat = new ChatListItemModel("чат", "имя создателя", "пусто", "none",
             DateTime.Now,
-            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd },
-            (_) => { }, (_) => { });
+            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd })
+        {
+            DeleteChatAction = ((_) => { }),
+            RequestRemoveUserAction =  ((_) => { }),
+            RequestChangeInitialVector =  ((_) => { }),
+        };
         if (_selectedChat != null && !_allMessages.ContainsKey(_selectedChat.Id))
         {
             _allMessages[_selectedChat.Id] = new ObservableCollection<ChatMessageModel>
             {
-                new ChatMessageModel(_selectedChat.Id, "Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message)
+                new ChatMessageModel(_selectedChat.Id, "Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message, null)
             };
         }
 
         IsSubscribedToSelectedChatMessages = true;
 
-        _chatList.Add(new ChatListItemModel("Чат 1 (дизайн)", "Тест", "пусто", DateTime.Now,
-            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd },
-            (_) => { }, (_) => { }));
+        _chatList.Add(new ChatListItemModel("Чат 1 (дизайн)", "Тест", "пусто", "none",DateTime.Now,
+            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd })
+        {
+            DeleteChatAction = ((_) => { }),
+            RequestRemoveUserAction =  ((_) => { }),
+            RequestChangeInitialVector =  ((_) => { }),
+        });
 
         Log.Information("DashboardViewModel: Экземпляр создан для XAML дизайнера.");
     }

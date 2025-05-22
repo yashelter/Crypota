@@ -26,7 +26,7 @@ public class EncryptingManager
         encoderBuilder = encoderBuilder.WithImplementation(GetImplementation(settings.Algo, blockSize, keySize)) // TODO: check
             .WithCipherMode((Wrapper.CipherMode)settings.CipherMode)
             .WithPadding((Wrapper.PaddingMode)settings.Padding)
-            .WithIv(iv)
+            .WithIv(iv ?? new byte[blockSize])
             .AddParam(new SymmetricCipherWrapper.RandomDeltaParameters() { Delta = delta ?? 3 })
             .WithKey(key)
             .WithBlockSize(blockSize / 8)
@@ -67,6 +67,15 @@ public class EncryptingManager
     public void SetIv(byte[]? iv)
     {
         encoderBuilder.WithIv(iv);
+    }
+    
+    public byte[] GenerateNewIv()
+    {
+        byte[] iv = new byte[encoderBuilder.GetBlockSize() ?? 16];
+        RandomNumberGenerator.Fill(iv); 
+        encoderBuilder.WithIv(iv);
+        
+        return iv;
     }
 
     public async Task<byte[]> EncryptMessage(byte[] message, CancellationToken ct = default)

@@ -31,33 +31,83 @@ public sealed class ServerApiClient : IDisposable
     }
     
     private sealed class AuthInterceptor : Interceptor
+{
+    private readonly Func<string?> _getToken;
+    public AuthInterceptor(Func<string?> getToken) => _getToken = getToken;
+
+    public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+        TRequest request,
+        ClientInterceptorContext<TRequest, TResponse> context,
+        AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
     {
-        private readonly Func<string?> _getToken;
-        public AuthInterceptor(Func<string?> getToken) => _getToken = getToken;
-
-        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
-            TRequest                      request,
-            ClientInterceptorContext<TRequest, TResponse> context,
-            AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
+        var headers = context.Options.Headers ?? new Metadata();
+        var token = _getToken();
+        if (!string.IsNullOrEmpty(token))
         {
-            var headers = context.Options.Headers ?? new Metadata();
-            var token   = _getToken();
-            if (!string.IsNullOrEmpty(token))
-            {
-                headers.Add("authorization", $"Bearer {token}");
-                Log.Information("Added token for query {0}", context.Method);
-            }
-            else
-            {
-                Log.Information("Nod added token for query {0}", context.Method);
-
-            }
-            var opts = context.Options.WithHeaders(headers);
-            var newCtx = new ClientInterceptorContext<TRequest, TResponse>(
-                context.Method, context.Host, opts);
-            return continuation(request, newCtx);
+            headers.Add("authorization", $"Bearer {token}");
+            Log.Verbose("Added token for unary call {Method}", context.Method);
         }
+        else
+        {
+            Log.Verbose("No token for unary call {Method}", context.Method);
+        }
+        var opts = context.Options.WithHeaders(headers);
+        var newCtx = new ClientInterceptorContext<TRequest, TResponse>(
+            context.Method, context.Host, opts);
+        return continuation(request, newCtx);
     }
+
+    public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(
+        ClientInterceptorContext<TRequest, TResponse> context,
+        AsyncClientStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        var headers = context.Options.Headers ?? new Metadata();
+        var token = _getToken();
+        if (!string.IsNullOrEmpty(token))
+        {
+            headers.Add("authorization", $"Bearer {token}");
+            Log.Verbose("Added token for client streaming {Method}", context.Method);
+        }
+        var opts = context.Options.WithHeaders(headers);
+        var newCtx = new ClientInterceptorContext<TRequest, TResponse>(context.Method, context.Host, opts);
+        return continuation(newCtx);
+    }
+
+    public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(
+        TRequest request,
+        ClientInterceptorContext<TRequest, TResponse> context,
+        AsyncServerStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        var headers = context.Options.Headers ?? new Metadata();
+        var token = _getToken();
+        if (!string.IsNullOrEmpty(token))
+        {
+            headers.Add("authorization", $"Bearer {token}");
+            Log.Verbose("Added token for server streaming {Method}", context.Method);
+        }
+        var opts = context.Options.WithHeaders(headers);
+        var newCtx = new ClientInterceptorContext<TRequest, TResponse>(
+            context.Method, context.Host, opts);
+        return continuation(request, newCtx);
+    }
+
+    public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(
+        ClientInterceptorContext<TRequest, TResponse> context,
+        AsyncDuplexStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        var headers = context.Options.Headers ?? new Metadata();
+        var token = _getToken();
+        if (!string.IsNullOrEmpty(token))
+        {
+            headers.Add("authorization", $"Bearer {token}");
+            Log.Verbose("Added token for duplex streaming {Method}", context.Method);
+        }
+        var opts = context.Options.WithHeaders(headers);
+        var newCtx = new ClientInterceptorContext<TRequest, TResponse>(
+            context.Method, context.Host, opts);
+        return continuation(newCtx);
+    }
+}
 
     private bool _disposed;
     public void Dispose()
