@@ -49,6 +49,7 @@ public class OfbHandler
                 encryptor.EncryptBlock(prevBlock);
                 SymmetricUtils.XorInPlace(currentBlock, prevBlock);
             }
+            prevBlock.CopyTo(iv);
         }
         finally
         {
@@ -101,6 +102,8 @@ public class OfbHandler
                 decryptor.EncryptBlock(prev);
                 SymmetricUtils.XorInPlace(currentBlock, prev);
             }
+            prev.CopyTo(iv);
+
         }
         finally
         {

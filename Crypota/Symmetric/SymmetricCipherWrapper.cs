@@ -117,7 +117,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
     public int BlockSize { get; set; }
     public int KeySize { get; set; }
 
-    private readonly byte[]? _iv;
+    private byte[]? _iv;
     private readonly CipherMode _cipherMode;
     private readonly PaddingMode _paddingMode;
     private readonly ISymmetricCipher _implementation;
@@ -385,7 +385,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
     }
 
     
-    public async Task<byte[]> EncryptMessageAsync(Memory<byte> message, CancellationToken ct = default)
+    public async Task<byte[]> EncryptMessageAsync(Memory<byte> message, bool saveStateInIv = false, CancellationToken ct = default)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
 
@@ -395,6 +395,7 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         EncryptionState.EncryptedBlocks = 0;
         EncryptionState.BlocksToEncrypt = buffer.Length / BlockSize;
 
+        byte[] iv = _iv.ToArray();
 
         switch (_cipherMode)
         {
@@ -414,19 +415,26 @@ public class SymmetricCipherWrapper : ISymmetricCipher
                 PcbcHandler.EncryptBlocksInPlace(buffer, this, _iv, ct);
                 break;
             case CipherMode.CTR:
-                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1, ct);
+                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, iv, 
+                    GetInitialCounter(),1, ct);
                 break;
             case CipherMode.RD:    
-                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, 
-                    GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta, ct);
+                await RdHandler.EncryptBlocksInPlaceAsync(buffer, this, iv,
+                    GetInitialCounter(), GetParam<RandomDeltaParameters>().Delta, ct);
                 break;
         }
+        
+        if (saveStateInIv)
+        {
+            _iv = iv;
+        }
+        
         EncryptionState.Transform = EncryptionStateTransform.Idle;
         return buffer;
     }
     
     
-    public async Task<byte[]> DecryptMessageAsync(Memory<byte> message, CancellationToken ct = default)
+    public async Task<byte[]> DecryptMessageAsync(Memory<byte> message, bool saveStateInIv = false, CancellationToken ct = default)
     {
         EncryptionState.Transform = EncryptionStateTransform.Analyzing;
 
@@ -438,6 +446,8 @@ public class SymmetricCipherWrapper : ISymmetricCipher
         EncryptionState.Transform = EncryptionStateTransform.Decrypting;
         EncryptionState.EncryptedBlocks = 0;
         EncryptionState.BlocksToEncrypt = buffer.Length / BlockSize;
+        
+        byte[] iv = _iv.ToArray();
 
         switch (_cipherMode)
         {
@@ -445,27 +455,32 @@ public class SymmetricCipherWrapper : ISymmetricCipher
                 await EcbHandler.DecryptBlocksInPlaceAsync(buffer, this, ct);
                 break;
             case CipherMode.CBC:
-                CbcHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
+                CbcHandler.DecryptBlocksInPlace(buffer, this, iv, ct);
                 break;
             case CipherMode.OFB:
-                OfbHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
+                OfbHandler.DecryptBlocksInPlace(buffer, this, iv, ct);
                 break;
             case CipherMode.CFB:
-                CfbHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
+                CfbHandler.DecryptBlocksInPlace(buffer, this, iv, ct);
                 break;
             case CipherMode.PCBC:
-                PcbcHandler.DecryptBlocksInPlace(buffer, this, _iv, ct);
+                PcbcHandler.DecryptBlocksInPlace(buffer, this, iv, ct);
                 break;
             case CipherMode.CTR:
-                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, GetInitialCounter(),1, ct);
+                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this,  iv, 
+                    GetInitialCounter(),1, ct);
                 break;
             case CipherMode.RD:    
-                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, 
+                await RdHandler.DecryptBlocksInPlaceAsync(buffer, this, iv,
                     GetInitialCounter(),GetParam<RandomDeltaParameters>().Delta, ct);
                 break;
         }
         EncryptionState.Transform = EncryptionStateTransform.RemovingPadding;
-
+        if (saveStateInIv)
+        {
+            _iv = iv;
+        }
+        
         byte[] last = RemovePadding(buffer.Slice(buffer.Length - BlockSize, BlockSize).ToArray());
         int index = buffer.Length - BlockSize < 0 ? 0 : buffer.Length - BlockSize;
         

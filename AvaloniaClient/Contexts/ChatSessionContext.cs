@@ -293,14 +293,18 @@ public sealed class ChatSessionContext : IDisposable
             }
             using var call = _grpcClient.SendFile(cancellationToken: ct);
             
-            progress.Maximum = size;
+            var encryptedFilename =
+                ByteString.CopyFrom(
+                    await _encryptingManager.EncryptMessage(ByteString.CopyFromUtf8(filename).ToByteArray(), ct));
             
+            progress.Maximum = size;
+            var encoder = _encryptingManager.BuildEncoder();
             while (result is not null)
             {
                 byte[] data = result.Value.Data;
                 long offset = result.Value.Offset;
 
-                data = await _encryptingManager.EncryptMessage(data, ct);
+                data = await EncryptingManager.EncryptMessageManual(encoder, data, ct);
                 progress.Value += data.Length;
 
                 await call.RequestStream.WriteAsync(new FileChunk()
@@ -308,7 +312,7 @@ public sealed class ChatSessionContext : IDisposable
                     ChatId = ChatId,
                     Offset = offset,
                     Data = ByteString.CopyFrom(data),
-                    FileName =  ByteString.CopyFrom(await _encryptingManager.EncryptMessage(ByteString.CopyFromUtf8(filename).ToByteArray(), ct)),
+                    FileName = encryptedFilename,
                     Type = type,
                     Meta = size,
                 }, ct);
@@ -355,10 +359,11 @@ public sealed class ChatSessionContext : IDisposable
             using EncryptedFileModel file = new EncryptedFileModel(savePath);
             using var call = _grpcClient.ReceiveFile(request, cancellationToken: ct);
 
+            var encoder = _encryptingManager.BuildEncoder();
             await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
             {
                 progress.Maximum = chunk.Meta;
-                byte[] data = await _encryptingManager.DecryptMessage(chunk.Data.ToByteArray(), ct);
+                byte[] data = await EncryptingManager.DecryptMessageManual(encoder, chunk.Data.ToByteArray(), ct);
                 await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
                 progress.Value += chunk.Data.Length;
             }

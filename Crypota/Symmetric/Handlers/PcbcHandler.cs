@@ -59,6 +59,8 @@ public class PcbcHandler
                 SymmetricUtils.XorInPlace(prevBlock, temp);
 
             }
+            prevBlock.CopyTo(iv);
+            
         }
         finally
         {
@@ -122,6 +124,8 @@ public class PcbcHandler
                 currentBlock.CopyTo(prev);
                 SymmetricUtils.XorInPlace(prev, temp);
             }
+            prevBlock.CopyTo(iv);
+
         }
         finally
         {

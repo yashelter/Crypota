@@ -81,12 +81,28 @@ public class EncryptingManager
     public async Task<byte[]> EncryptMessage(byte[] message, CancellationToken ct = default)
     {
         var encoder = encoderBuilder.Build();
-        return await Task.Run(async () => await encoder.EncryptMessageAsync(message, ct), ct);
+        return await Task.Run(async () => await encoder.EncryptMessageAsync(message, true, ct), ct);
     }
 
     public async Task<byte[]> DecryptMessage(byte[] message, CancellationToken ct = default)
     {
         var encoder = encoderBuilder.Build();
-        return await Task.Run(async () => await encoder.DecryptMessageAsync(message, ct), ct);
+        return await Task.Run(async () => await encoder.DecryptMessageAsync(message, true, ct), ct);
     }
+
+    public SymmetricCipherWrapper BuildEncoder()
+    {
+        return encoderBuilder.Build();
+    }
+    
+    public static async Task<byte[]> EncryptMessageManual(SymmetricCipherWrapper encoder, byte[] message, CancellationToken ct = default)
+    {
+        return await Task.Run(async () => await encoder.EncryptMessageAsync(message, true, ct), ct);
+    }
+
+    public static async Task<byte[]> DecryptMessageManual(SymmetricCipherWrapper encoder, byte[] message, CancellationToken ct = default)
+    {
+        return await Task.Run(async () => await encoder.DecryptMessageAsync(message, true, ct), ct);
+    }
+    
 }
