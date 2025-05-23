@@ -106,7 +106,7 @@ public class KeyGenForDh
         }
     }
 
-    private BigInteger GenerateCandidate()
+    public BigInteger GenerateCandidate()
     {
         var bytes = GetRandomBytes(_bitLength);
         int topBitIndex = (_bitLength - 1) & 7;

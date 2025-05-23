@@ -54,14 +54,20 @@ public class EncryptingManager
     public void SetKey(byte[]? sharedSecret)
     {
         if (sharedSecret == null) { throw new ArgumentNullException(nameof(sharedSecret)); }
+        int keyLength = encoderBuilder.GetKeySize() ?? 24;
+        int ivLength = encoderBuilder.GetBlockSize() ?? 16;
         
         byte[] okm = HKDF.DeriveKey(
             HashAlgorithmName.SHA256,
             ikm: sharedSecret,
-            outputLength: 24);
+            outputLength: keyLength + ivLength);
         
-        Log.Debug("Set key for session: {Key}", ArrayToHexString(okm));
-        encoderBuilder.WithKey(okm);
+        byte[] key = okm.AsSpan(0, keyLength).ToArray();
+        byte[] iv  = okm.AsSpan(keyLength, ivLength).ToArray();
+        
+        Log.Debug("Set key for session: {Key}", ArrayToHexString(key));
+        encoderBuilder.WithKey(key);
+        encoderBuilder.WithIv(iv);
     }
 
     public void SetIv(byte[]? iv)
