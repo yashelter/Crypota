@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using Crypota.CryptoMath;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;
@@ -50,6 +51,8 @@ public class CbcHandler
                 encryptor.EncryptBlock(currentBlock);
                 currentBlock.CopyTo(prevBlock);
             }
+
+            prevBlock.CopyTo(iv);
         }
         finally
         {
@@ -110,6 +113,8 @@ public class CbcHandler
                 SymmetricUtils.XorInPlace(currentBlockSpan, prevBlockSpan);
                 temp.CopyTo(prevBlockSpan);
             }
+            prevBlockSpan.CopyTo(iv);
+            
         }
         finally
         {
@@ -121,7 +126,7 @@ public class CbcHandler
     public static async Task DecryptBlocksParallelAsync(
         Memory<byte> ciphertextAndPlaintext,
         ISymmetricCipher decryptor,
-        byte[]? iv,
+        byte[]? iv, // here not copy (so one more reason not use this)
         CancellationToken cancellationToken = default)
     {
         if (decryptor == null) throw new ArgumentNullException(nameof(decryptor));

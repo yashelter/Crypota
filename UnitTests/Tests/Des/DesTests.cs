@@ -1,6 +1,6 @@
 ﻿using Crypota.Symmetric;
 using Crypota.Symmetric.Deal;
-using static Crypota.SymmetricUtils;
+using static Crypota.CryptoMath.SymmetricUtils;
 using static Crypota.FileUtility;
 
 namespace UnitTests.Tests.Des;

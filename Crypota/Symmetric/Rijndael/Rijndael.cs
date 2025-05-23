@@ -433,5 +433,8 @@ public class Rijndael : IKeyExtension, IEncryptionTransformation, ISymmetricCiph
         AddRoundKey(state, _keys[0].Span);
     }
 
-    
+    public virtual object Clone()
+    {
+        throw new NotImplementedException();
+    }
 }

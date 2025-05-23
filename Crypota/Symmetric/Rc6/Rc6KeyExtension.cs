@@ -2,14 +2,13 @@
 
 using System;
 
-public class Rc6KeyExpansion
+public class Rc6KeyExpansion: ICloneable
 {
     private const int W = 32;
     private const uint P = 0xB7E15163;
     private const uint Q = 0x9E3779B9;
     
     private readonly int _rounds;
-    private readonly int _keySize;
 
     public Rc6KeyExpansion(int rounds = 20)
     {
@@ -56,4 +55,9 @@ public class Rc6KeyExpansion
     
     private static uint RotateLeft(uint value, int shift) 
         => (value << shift) | (value >> (W - shift));
+
+    public object Clone()
+    {
+        return new Rc6KeyExpansion(_rounds);
+    }
 }

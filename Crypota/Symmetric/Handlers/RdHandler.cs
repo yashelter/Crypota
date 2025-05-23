@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using System.Runtime.CompilerServices;
+using Crypota.CryptoMath;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;
@@ -10,6 +11,7 @@ public class RdHandler
     public static async Task EncryptBlocksInPlaceAsync(
         Memory<byte> state,
         ISymmetricCipher encryptor,
+        byte[]? ivReal,
         BigInteger iv,
         BigInteger delta,
         CancellationToken cancellationToken = default)
@@ -55,12 +57,20 @@ public class RdHandler
 
                 await Task.CompletedTask;
             });
+        BigInteger diff = totalBlocks * delta + iv;
+        byte[] counterBytes = diff.ToByteArray();
+        if (BitConverter.IsLittleEndian)
+            Array.Reverse(counterBytes);
+
+        Array.Resize(ref counterBytes, blockSize);
+        counterBytes.CopyTo(ivReal.AsSpan(0, blockSize));
     }
 
 
     public static async Task DecryptBlocksInPlaceAsync(
         Memory<byte> state,
         ISymmetricCipher decryptor,
+        byte[]? ivReal,
         BigInteger iv,
         BigInteger delta,
         CancellationToken cancellationToken = default)
@@ -107,5 +117,12 @@ public class RdHandler
 
                 await Task.CompletedTask;
             });
+        BigInteger diff = totalBlocks * delta + iv;
+        byte[] counterBytes = diff.ToByteArray();
+        if (BitConverter.IsLittleEndian)
+            Array.Reverse(counterBytes);
+
+        Array.Resize(ref counterBytes, blockSize);
+        counterBytes.CopyTo(ivReal.AsSpan(0, blockSize));
     }
 }

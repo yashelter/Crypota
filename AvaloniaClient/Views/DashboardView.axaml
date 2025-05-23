@@ -6,35 +6,142 @@
              xmlns:converters="using:AvaloniaClient.Converters"
              xmlns:models="using:AvaloniaClient.Models" 
              xmlns:controls="clr-namespace:Avalonia.Notification.Controls;assembly=Notification.Avalonia"
-             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+             xmlns:repositories="clr-namespace:AvaloniaClient.Repositories"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
              x:DataType="vm:DashboardViewModel"
              x:Class="AvaloniaClient.Views.DashboardView">
 
-    <UserControl.Resources>
-        <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
-        <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
-    </UserControl.Resources>
+   <UserControl.Resources>
+    <converters:BooleanToAlignmentConverter x:Key="BooleanToAlignmentConverter"/>
+    <converters:BooleanToMessageBackgroundConverter x:Key="BooleanToMessageBackgroundConverter"/>
+    <converters:DarkenColorConverter x:Key="DarkenColorConverter"/>
     
-    <UserControl.Styles>
-        <Style Selector="Button:unsubscribed"> 
-            <Setter Property="Background" Value="#E52B50"/> 
-        </Style>
-        <Style Selector="Button:subscribed">
-            <Setter Property="Background" Value="#76FF7A"/> 
-        </Style>
-        <Style Selector="Button.SubscriptionButton">
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="DarkGray"/>
-            <Setter Property="Foreground" Value="Black"/>
-        </Style>
-    </UserControl.Styles>
+    <DataTemplate x:Key="TextMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, 
+                Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <TextBlock Grid.Row="1" Text="{Binding Content}" TextWrapping="Wrap"
+                           Cursor="Hand"
+                           PointerPressed="OnMessagePointerPressed"/>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FileMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+   
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" PointerPressed="OnFilePointerPressed">
+                    <Image Source="/Assets/file_icon.png" Width="128" Height="128" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Filename}"
+                               Classes="hyperlink"
+                               Cursor="Hand"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ImageMessageTemplate" DataType="models:ChatMessageModel">
+        <Border MaxWidth="450" Padding="10,8" Margin="5,5,15,5" CornerRadius="10"
+                HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}}"
+                Background="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="{Binding Sender}" FontWeight="SemiBold" FontSize="11" Opacity="0.8"
+                           IsVisible="{Binding !IsSentByMe}" Margin="0,0,0,3"/>
+
+                <Image Grid.Row="1"
+                       Source="{Binding ImageBitmap}"
+                       MaxWidth="512" MaxHeight="512"
+                       Stretch="Uniform"
+                       Cursor="Hand"
+                       PointerPressed="OnFilePointerPressed"/>
+
+                <TextBlock Grid.Row="2" Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.7"
+                           HorizontalAlignment="Right" Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
+    </DataTemplate>
+    
+    <repositories:MessageTemplateSelector x:Key="MessageSelector"
+                                          TextTemplate="{StaticResource TextMessageTemplate}"
+                                          FileTemplate="{StaticResource FileMessageTemplate}"
+                                          ImageTemplate="{StaticResource ImageMessageTemplate}"/>
+</UserControl.Resources>
+    
+   <UserControl.Styles>
+    <Style Selector="Button.subscriptionButton">
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="DarkGray"/>
+        <Setter Property="Foreground" Value="Black"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Margin" Value="5,0"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+
+        <Setter Property="Background" Value="LightGray"/> 
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Button.subscriptionButton.unsubscribed">
+        <Setter Property="Background" Value="#76FF7A"/> 
+    </Style>
+    <Style Selector="Button.subscriptionButton.subscribed">
+        <Setter Property="Background" Value="#E52B50"/>
+    </Style>
+
+    <Style Selector="Button.subscriptionButton:pointerover">
+        <Setter Property="Background"
+                Value="{Binding $self.Background, 
+                                 Converter={StaticResource DarkenColorConverter}, 
+                                 ConverterParameter=0.1}" /> 
+    </Style>
+</UserControl.Styles>
     <Design.DataContext>
         <vm:DashboardViewModel/>
     </Design.DataContext>
 
     <Grid ColumnDefinitions="1*,3,3*">
-        <!-- Левая панель -->
         <DockPanel Grid.Column="0">
             <Border DockPanel.Dock="Top" Padding="5" BorderThickness="0,0,0,1" BorderBrush="LightGray">
                 <Button Content="Меню" Command="{Binding ToggleOptionsPanelCommand}" HorizontalAlignment="Stretch"/>
@@ -65,7 +172,7 @@
                                         <MenuItem.Header>
                                             <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <TextBlock Text="Владелец:" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding OwnerName}"/>
+                                                <TextBlock Text="{Binding CreatorName}"/>
                                             </StackPanel>
                                         </MenuItem.Header>
                                     </MenuItem>
@@ -74,6 +181,14 @@
                                             <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <TextBlock Text="Создан:" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding CreationDate, StringFormat='dd.MM.yyyy HH:mm'}"/>
+                                            </StackPanel>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <MenuItem IsEnabled="False">
+                                        <MenuItem.Header>
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <TextBlock Text="Второй пользователь:" FontWeight="Normal"/>
+                                                <TextBlock Text="{Binding ChatMate}"/>
                                             </StackPanel>
                                         </MenuItem.Header>
                                     </MenuItem>
@@ -104,13 +219,15 @@
                                         </MenuItem.Header>
                                     </MenuItem>
                                     <Separator/>
+                                    <MenuItem Header="Сменить IV" Command="{Binding ChangeIvCommand}"/>
+                                    <Separator/>
                                     <MenuItem Header="Удалить другого пользователя из чата" Command="{Binding RequestRemoveUserCommand}"/>
                                     <Separator/>
                                     <MenuItem Header="Удалить чат" Command="{Binding DeleteChatCommand}" Foreground="Red"/>
                                 </ContextMenu>
                             </Border.ContextMenu>
                             <StackPanel Spacing="5">
-                                <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Id}" FontWeight="Bold"/>
                                 <TextBlock Text="{Binding LastMessage}" Foreground="Gray" FontSize="12" TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding LastMessageTime, StringFormat='HH:mm'}" Foreground="LightGray" FontSize="10" HorizontalAlignment="Right"/>
                             </StackPanel>
@@ -127,19 +244,17 @@
                 <Grid ColumnDefinitions="Auto,*,Auto"> 
                     <Button Grid.Column="0" Command="{Binding CopySelectedChatIdCommand}" ToolTip.Tip="Копировать ID чата"
                             Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding SelectedChat.Name, FallbackValue='Выберите чат'}" 
+                        <TextBlock Text="{Binding SelectedChat.Id, FallbackValue='Выберите чат'}" 
                                    FontSize="16" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center"/>
                     </Button>
                     
                     <TextBlock Grid.Column="1"/>
-                    <Button Grid.Column="2" 
-                            Content="{Binding ToggleSubscriptionButtonText}" 
+                    <Button Grid.Column="2"
+                            Content="{Binding ToggleSubscriptionButtonText}"
                             Command="{Binding ToggleMessageSubscriptionCommand}"
-                            Classes.SubscriptionButton="True"
-                            Classes.subscribed="{Binding IsSubscribedToSelectedChatMessages}"   
-                            Classes.unsubscribed="{Binding !IsSubscribedToSelectedChatMessages}"
-                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Padding="8,4" Margin="5,0"/>
+                            Classes.subscriptionButton="True"
+                            Classes.subscribed="{Binding IsSubscribedToSelectedChatMessages}"
+                            Classes.unsubscribed="{Binding !IsSubscribedToSelectedChatMessages}"/>
                 </Grid>
             </Border>
 
@@ -156,24 +271,8 @@
                 </Grid>
             </Border>
             <ScrollViewer Name="MessagesScrollViewer" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding SelectedChatMessages}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="models:ChatMessageModel"> 
-                            <Border MaxWidth="400" Padding="8,5" Margin="5" CornerRadius="5"
-                                    HorizontalAlignment="{Binding IsSentByMe, Converter={StaticResource BooleanToAlignmentConverter}, ConverterParameter=Right}">
-                                <Border.Background>
-                                    <SolidColorBrush Color="{Binding IsSentByMe, Converter={StaticResource BooleanToMessageBackgroundConverter}}"/>
-                                </Border.Background>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Sender}" FontWeight="SemiBold" FontSize="10" Opacity="0.7"
-                                               IsVisible="{Binding !IsSentByMe}"/>
-                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding Timestamp, StringFormat='HH:mm'}" FontSize="10" Opacity="0.6"
-                                               HorizontalAlignment="Right"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                <ItemsControl ItemsSource="{Binding SelectedChatMessages}" 
+                              ItemTemplate="{StaticResource MessageSelector}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Vertical"/>
@@ -191,7 +290,7 @@
         <controls:NotificationMessageContainer Grid.Column="2" Manager="{Binding Manager}"
                                                HorizontalAlignment="Right" 
                                                VerticalAlignment="Bottom"
-                                               Margin="40" 
+                                               Margin="50" 
                                                ZIndex="999"/> 
     </Grid>
 </UserControl>

@@ -3,29 +3,35 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Server.Models;
+namespace AvaloniaClient.Models;
 
-public sealed class EncryptedFile: IDisposable
+public class EncryptedFileModel : IDisposable
 {
     public int ChunkSizeBytes { get; init; } = 3 * 1024 * 1024;
-        
+
     private readonly string _path;
     private long _cursor = 0;
-        
+
     private bool _disposed = false;
 
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
-    public EncryptedFile(string path)
+    public EncryptedFileModel(string path)
     {
         _path = path;
     }
-        
-        
+
+
+    public long GetFullSize()
+    {
+        FileInfo fileInfo = new FileInfo(_path);
+        return fileInfo.Length;
+    }
+
     /// <summary>
     /// Записывает байты в файл, начиная с указанного смещения.
     /// </summary>
-    public async Task AppendFragmentAtOffsetAsync(long offset, byte[] bytes)
+    public async Task AppendFragmentAtOffsetAsync(long offset, byte[] bytes, CancellationToken ct = default)
     {
         await _semaphore.WaitAsync();
         try
@@ -39,7 +45,7 @@ public sealed class EncryptedFile: IDisposable
                 useAsync: true
             );
             fs.Seek(offset, SeekOrigin.Begin);
-            await fs.WriteAsync(bytes, 0, bytes.Length);
+            await fs.WriteAsync(bytes, 0, bytes.Length, cancellationToken: ct);
         }
         finally
         {
@@ -50,9 +56,9 @@ public sealed class EncryptedFile: IDisposable
     /// <summary>
     /// Читает следующий фрагмент файла, возвращая сам фрагмент и смещение, с которого он прочитан.
     /// Возвращает null, когда до конца файла.</summary>
-    public async Task<(byte[] Data, long Offset)?> ReadNextFragmentAsync(int chunkSizeBytes = 3 * 1024 * 1024)
+    public async Task<(byte[] Data, long Offset)?> ReadNextFragmentAsync(CancellationToken ct = default, int chunkSizeBytes = 3 * 1024 * 1024)
     {
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(ct);
         try
         {
             if (!File.Exists(_path))
@@ -74,7 +80,7 @@ public sealed class EncryptedFile: IDisposable
 
             int bytesToRead = (int)Math.Min(chunkSizeBytes, fileInfo.Length - _cursor);
             var buffer = new byte[bytesToRead];
-            int read = await fs.ReadAsync(buffer, 0, bytesToRead);
+            int read = await fs.ReadAsync(buffer, 0, bytesToRead, cancellationToken: ct);
 
             var offset = _cursor;
             _cursor += read;
@@ -93,7 +99,7 @@ public sealed class EncryptedFile: IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private void Dispose(bool disposing)
+    protected virtual void Dispose(bool disposing)
     {
         if (_disposed) return;
 
@@ -101,10 +107,11 @@ public sealed class EncryptedFile: IDisposable
         {
             _semaphore?.Dispose();
         }
+
         _disposed = true;
     }
 
-    ~EncryptedFile()
+    ~EncryptedFileModel()
     {
         Dispose(false);
     }

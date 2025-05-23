@@ -3,7 +3,7 @@
 namespace Crypota.Interfaces;
 
 
-public interface ISymmetricCipher
+public interface ISymmetricCipher : ICloneable
 {
     public byte[]? Key { get; set; }
     

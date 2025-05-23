@@ -1,11 +1,11 @@
-﻿using Avalonia;
+﻿using System;
+using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
+using Avalonia.Controls.ApplicationLifetimes;
 using AvaloniaClient.ViewModels;
-
-using Avalonia.Controls;
 using Avalonia.Input;
-using AvaloniaClient.ViewModels;
+using AvaloniaClient.Models;
+using Serilog;
 
 namespace AvaloniaClient.Views
 {
@@ -40,6 +40,32 @@ namespace AvaloniaClient.Views
                         e.Handled = true;
                     }
                 }
+            }
+        }
+        
+        private void OnMessagePointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is ChatMessageModel msg)
+            {
+                Log.Information("Клик по сообщению: {0}", msg.Content);
+                if (DataContext is DashboardViewModel vm)
+                {
+                    vm.OnMessageWasClicked(msg);
+                }
+            }
+        }
+        
+        private async void OnFilePointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is not Control ctrl || ctrl.DataContext is not ChatMessageModel msg) return;
+            if ( (DataContext is not DashboardViewModel vm)) return;
+            try
+            {
+                await vm.OnFileWasClicked(msg);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "OnFilePointerPressed: error [OnFileWasClicked]");
             }
         }
     }

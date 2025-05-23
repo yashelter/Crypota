@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using Crypota.CryptoMath;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;
@@ -58,6 +59,8 @@ public class PcbcHandler
                 SymmetricUtils.XorInPlace(prevBlock, temp);
 
             }
+            prevBlock.CopyTo(iv);
+            
         }
         finally
         {
@@ -121,6 +124,8 @@ public class PcbcHandler
                 currentBlock.CopyTo(prev);
                 SymmetricUtils.XorInPlace(prev, temp);
             }
+            prevBlock.CopyTo(iv);
+
         }
         finally
         {

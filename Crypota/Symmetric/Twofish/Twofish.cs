@@ -40,6 +40,7 @@ public class Twofish : ISymmetricCipher
     private uint Rounds { get; } = 16;
     public int BlockSize { get; private init; }
     public int KeySize { get;  private init;}
+    public EncryptionState? EncryptionState { get; set; } = null;
 
     public required int BlockSizeBits
     {
@@ -53,10 +54,7 @@ public class Twofish : ISymmetricCipher
         init => KeySize = value / 8;
     }
 
-
-    public EncryptionState? EncryptionState { get; }
-
-
+    
 
     /// <summary>
     /// Функция g из алгоритма Twofish.
@@ -248,5 +246,29 @@ public class Twofish : ISymmetricCipher
             BitConverter.GetBytes(R[i]).AsSpan().CopyTo(state.Slice(i * 4, 4));
         }
         
+    }
+    
+    public object Clone()
+    {
+        var clone = new Twofish
+        {
+            IrreduciblePolynom = this.IrreduciblePolynom,
+            BlockSizeBits = this.BlockSizeBits,
+            KeySizeBits   = this.KeySizeBits
+        };
+
+        if (this.Key != null)
+        {
+            var keyCopy = new byte[this.Key.Length];
+            Array.Copy(this.Key, keyCopy, keyCopy.Length);
+            clone.Key = keyCopy;
+        }
+
+        if (this.EncryptionState != null)
+        {
+            clone.EncryptionState = new EncryptionState();
+        }
+
+        return clone;
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using Crypota.CryptoMath;
 using Crypota.Interfaces;
 
 namespace Crypota.Symmetric.Handlers;
@@ -52,6 +53,7 @@ public class CfbHandler
                 SymmetricUtils.XorInPlace(currentBlock, feedbackSpan); 
                 tempCiphertextSpan.CopyTo(feedbackSpan);
             }
+            feedbackSpan.CopyTo(iv);
         }
         finally
         {
@@ -106,6 +108,8 @@ public class CfbHandler
                 SymmetricUtils.XorInPlace(currentBlock, prev);
                 currentBlock.CopyTo(prev);
             }
+            prev.CopyTo(iv);
+
         }
         finally
         {

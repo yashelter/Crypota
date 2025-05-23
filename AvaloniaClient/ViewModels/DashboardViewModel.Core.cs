@@ -7,6 +7,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Notification;
 using AvaloniaClient.Models;
+using AvaloniaClient.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using StainsGate;
@@ -15,10 +17,6 @@ namespace AvaloniaClient.ViewModels;
 
 public partial class DashboardViewModel : ViewModelBase
 {
-    public string SubscriptionButtonClass =>
-        IsSubscribedToSelectedChatMessages ? "Button-Subscribed" : "Button-Unsubscribed";
-
-
 
     [RelayCommand(CanExecute = nameof(CanCopySelectedChatId))]
     private async Task CopySelectedChatIdAsync()
@@ -49,7 +47,7 @@ public partial class DashboardViewModel : ViewModelBase
         {
             await clipboard.SetTextAsync(SelectedChat.Id);
             Log.Information("ID чата {ChatId} скопирован в буфер обмена.", SelectedChat.Id);
-            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Name}' скопирован");
+            _toast.ShowSuccessMessageToast($"ID чата '{SelectedChat.Id}' скопирован");
         }
         else
         {
@@ -95,26 +93,31 @@ public partial class DashboardViewModel : ViewModelBase
         _toast = new ToastManager(Manager); // Безопасно
 
 
-        _selectedChat = new ChatListItemModel("чат", "имя создателя", "пусто",
+        _selectedChat = new ChatListItemModel("чат", "имя создателя", "пусто", "none",
             DateTime.Now,
-            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd },
-            (_) => { }, (_) => { })
+            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd })
         {
-            Name = "Тестовый чат (дизайн)"
+            DeleteChatAction = ((_) => { }),
+            RequestRemoveUserAction =  ((_) => { }),
+            RequestChangeInitialVector =  ((_) => { }),
         };
         if (_selectedChat != null && !_allMessages.ContainsKey(_selectedChat.Id))
         {
             _allMessages[_selectedChat.Id] = new ObservableCollection<ChatMessageModel>
             {
-                new ChatMessageModel("Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message)
+                new ChatMessageModel(_selectedChat.Id, "Дизайнер", "Сообщение для превью", DateTime.Now, false, MessageType.Message, null)
             };
         }
 
         IsSubscribedToSelectedChatMessages = true;
 
-        _chatList.Add(new ChatListItemModel("Чат 1 (дизайн)", "Тест", "пусто", DateTime.Now,
-            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd },
-            (_) => { }, (_) => { }));
+        _chatList.Add(new ChatListItemModel("Чат 1 (дизайн)", "Тест", "пусто", "none",DateTime.Now,
+            new RoomData() { Algo = EncryptAlgo.Rc6, Padding = PaddingMode.Ansix923, CipherMode = EncryptMode.Rd })
+        {
+            DeleteChatAction = ((_) => { }),
+            RequestRemoveUserAction =  ((_) => { }),
+            RequestChangeInitialVector =  ((_) => { }),
+        });
 
         Log.Information("DashboardViewModel: Экземпляр создан для XAML дизайнера.");
     }

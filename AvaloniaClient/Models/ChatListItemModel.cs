@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using AvaloniaClient.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,15 +10,18 @@ namespace AvaloniaClient.Models;
 public partial class ChatListItemModel : ViewModelBase
 {
     public string Id { get; }
-    [ObservableProperty] private string _name;
     [ObservableProperty] private string _lastMessage;
     [ObservableProperty] private DateTime _lastMessageTime;
 
-    [ObservableProperty] private string _ownerName = "None";
+    [ObservableProperty] private string _creatorName;
     [ObservableProperty] private DateTime _creationDate = DateTime.UtcNow;
+    
+    [ObservableProperty] private string _mateName;
 
-    private readonly Action<ChatListItemModel>? _deleteChatAction;
-    private readonly Action<ChatListItemModel>? _requestRemoveUserAction;
+
+    public required Action<ChatListItemModel> DeleteChatAction { get; init; }
+    public required Action<ChatListItemModel> RequestRemoveUserAction { get; init; }
+    public required Action<ChatListItemModel> RequestChangeInitialVector { get; init; }
     
     public EncryptAlgo Algorithm { get; set; }
     public EncryptMode Mode { get; set; }
@@ -25,26 +29,25 @@ public partial class ChatListItemModel : ViewModelBase
 
     public IRelayCommand DeleteChatCommand { get; }
     public IRelayCommand RequestRemoveUserCommand { get; }
-
+    public IRelayCommand ChangeIvCommand { get; }
+    
     public ChatListItemModel(
         string id,
-        string name,
+        string creatorName,
         string lastMessage,
+        string mate,
         DateTime lastMessageTime,
-        RoomData settings,
-        Action<ChatListItemModel> deleteChatAction,
-        Action<ChatListItemModel> requestRemoveUserAction)
+        RoomData settings)
     {
         Id = id;
-        _name = name;
+        _creatorName = creatorName;
         _lastMessage = lastMessage;
+        _mateName = mate;
         _lastMessageTime = lastMessageTime;
-
-        _deleteChatAction = deleteChatAction;
-        _requestRemoveUserAction = requestRemoveUserAction;
 
         DeleteChatCommand = new RelayCommand(ExecuteDeleteChat);
         RequestRemoveUserCommand = new RelayCommand(ExecuteRequestRemoveUser);
+        ChangeIvCommand = new RelayCommand(ExecuteChangeIvCommand);
         
         Algorithm = settings.Algo;
         Mode = settings.CipherMode;
@@ -52,19 +55,41 @@ public partial class ChatListItemModel : ViewModelBase
     }
     
 
+    public ChatListItemModel(ChatModel chat)
+    : this(chat.ChatId,
+        chat.OwnerUsername,
+        "Чат был загружен",
+        chat.MateName,
+        DateTime.Now,
+        new RoomData()
+        {
+            Algo = chat.Algorithm,
+            CipherMode = chat.CipherMode,
+            Padding = chat.Padding
+        })
+    {
+        _creationDate = chat.CreatedAt;
+    }
+
+
+    private void ExecuteChangeIvCommand()
+    {
+        RequestChangeInitialVector?.Invoke(this);
+    }
+    
+
     private void ExecuteDeleteChat()
     {
-        _deleteChatAction?.Invoke(this);
+        DeleteChatAction?.Invoke(this);
     }
 
     private void ExecuteRequestRemoveUser()
     {
-        // Здесь можно добавить логику, если ChatListItemViewModel должен что-то сделать перед вызовом
-        // например, собрать какую-то дополнительную информацию.
-        _requestRemoveUserAction?.Invoke(this);
+        RequestRemoveUserAction?.Invoke(this);
     }
     
     public string AlgorithmDisplay => Algorithm.ToString();
     public string ModeDisplay => Mode.ToString();
     public string PaddingDisplay => ChatPadding.ToString();
+    public string ChatMate => MateName;
 }

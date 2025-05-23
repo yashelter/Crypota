@@ -32,7 +32,6 @@ namespace AvaloniaClient.ViewModels;
         }
         
 
-        // Этот метод будет вызываться из App.axaml.cs или сервиса
         public async Task InitializeAsync()
         {
             var token = _authService.CanEnter();

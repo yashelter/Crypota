@@ -2,6 +2,8 @@
 using System.IO;
 using System.Text.Json;
 
+namespace AvaloniaClient.Services;
+
 public class Config
 {
     private static readonly Lazy<Config> _instance = new(LoadConfig);
@@ -9,10 +11,9 @@ public class Config
     public static Config Instance => _instance.Value;
 
     public string ServerAddress { get; init; }
-    public string MongoConnectionString { get; init; }
-    public string MongoDatabase { get; init; }
+    public string AppDataBase { get; init; }
+    public string TempPath { get; init; }
 
-    public string RedisConnectionString { get; init; }
     
     private static Config LoadConfig()
     {
@@ -26,7 +27,14 @@ public class Config
         {
             PropertyNameCaseInsensitive = true
         });
+        
+        if (config == null) throw new InvalidOperationException("Не удалось десериализовать конфиг");
+        
+        if (!Directory.Exists(config.TempPath))
+        {
+            Directory.CreateDirectory(config.TempPath);
+        }
 
-        return config ?? throw new InvalidOperationException("Не удалось десериализовать конфиг");
+        return config;
     }
 }
