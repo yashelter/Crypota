@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="180"
         x:Class="AvaloniaClient.Views.JoinChatDialogView"
         x:DataType="vm:JoinChatDialogViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/logo.ico"
         Title="Присоединиться к чату"
         WindowStartupLocation="CenterOwner"
         CanResize="False"

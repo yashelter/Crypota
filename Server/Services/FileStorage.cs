@@ -23,16 +23,17 @@ public interface IFileStorage
 }
 
 
-public class FileStorage : BackgroundService, IFileStorage
+[Obsolete("Было прикольно, но оказалось не нужно")]
+public class FileStorageObsolete : BackgroundService, IFileStorage
 {
-    private readonly ILogger<FileStorage> _logger;
+    private readonly ILogger<FileStorageObsolete> _logger;
     private readonly IMongoCollection<StoredFile> _collection;
     private readonly TimeSpan _retention;
     private readonly string _storageDir;
     
     public string StorageDir => _storageDir;
 
-    public FileStorage(IConfiguration config, ILogger<FileStorage> logger, IMongoClient mongoClient)
+    public FileStorageObsolete(IConfiguration config, ILogger<FileStorageObsolete> logger, IMongoClient mongoClient)
     {
         _logger = logger;
         var dbName = config["Mongo:Database"];

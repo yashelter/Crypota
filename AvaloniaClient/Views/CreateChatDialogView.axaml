@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="350"
         x:Class="AvaloniaClient.Views.CreateChatDialogView"
         x:DataType="vm:CreateChatDialogViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/logo.ico"
         Title="Создать новый чат"
         WindowStartupLocation="CenterOwner"
         CanResize="False"

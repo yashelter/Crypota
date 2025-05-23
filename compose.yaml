@@ -1,7 +1,52 @@
 ﻿services:
+  mongo:
+    image: mongo:6.0
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_db
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
   server:
     image: server
     build:
       context: .
-      dockerfile: Server/Dockerfile
+      dockerfile: Server/Dockerfile 
+    container_name: server_app
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}      
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__ExpiresInSeconds: ${JWT_EXPIRE_TIME}
 
+      Logging__LogLevel__Default: ${LOGGING_LEVEL}
+      "Logging__LogLevel__Microsoft.AspNetCore": ${LOGGING_LEVEL_ASPNET}
+
+      Mongo__ConnectionString: ${MONGO_CONNECTION_STRING}
+      Mongo__Database: ${MONGO_DB}
+      Mongo__UsersCollection: ${MONGO_USERS_COLLECTION}
+      Mongo__RoomsCollection: ${MONGO_ROOMS_COLLECTION}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING}
+      AllowedHosts: ${ALLOWED_HOSTS}
+      Kestrel__EndpointDefaults__Protocols: ${KESTREL_ENDPOINT_PROTOCOL}
+      
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+volumes:
+  mongo_data:
+  redis_data:

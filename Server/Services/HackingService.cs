@@ -446,7 +446,6 @@ public class HackingGateService : HackingGate.HackingGateBase
         {
             _logger.LogInformation("[SendFile] Peer={Peer} starting file upload", context.Peer);
             
-
             var enumerator = requestStream.ReadAllAsync().GetAsyncEnumerator();
 
             if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
@@ -457,7 +456,7 @@ public class HackingGateService : HackingGate.HackingGateBase
             FileChunk chunk = enumerator.Current;
 
             string chatId = chunk.ChatId;
-            string filename = $"{chunk.ChatId}.{chunk.FileName}";
+            string filename = $"{chunk.ChatId}.{chunk.FileName.ToStringUtf8()}";
             string username = context.UserState["username"] as string ?? "Error while parsing name (JWT)";
 
             if (!_sessions.ChatSessions.TryGetValue(chatId, out var session) || session.MessageSubscribers.Count != 2)
@@ -571,7 +570,7 @@ public class HackingGateService : HackingGate.HackingGateBase
                 throw new RpcException(new Status(StatusCode.Unauthenticated, "Not belongs to room"));
             }
             
-            var filename = $"{request.ChatId}.{request.FileName}";
+            var filename = $"{request.ChatId}.{request.FileName.ToStringUtf8()}";
 
             if (!_sessions.ChatSessions.TryGetValue(request.ChatId, out var session) || session.MessageSubscribers.Count != 2)
             {

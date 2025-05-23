@@ -42,8 +42,6 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))]
     private ChatListItemModel? _selectedChat;
     
-    private HackingGate.HackingGateClient client;
-
     public bool SelectedChatIsNull => _selectedChat is null;
     
     public ObservableCollection<ChatMessageModel>? SelectedChatMessages
@@ -75,7 +73,6 @@ public partial class DashboardViewModel : ViewModelBase
 
     public DashboardViewModel(Action onLogout)
     {
-        client = ServerApiClient.Instance.Client;
         _auth = Auth.Instance;
         _onLogout = onLogout ?? throw new ArgumentNullException(nameof(onLogout));
         _chatList = new ObservableCollection<ChatListItemModel>();
@@ -96,7 +93,7 @@ public partial class DashboardViewModel : ViewModelBase
         List<ChatModel> chats = new List<ChatModel>();
         try
         {
-            var chatsGlobal = client.GetAllJoinedRooms(new Empty());
+            var chatsGlobal = ServerApiClient.Instance.GrpcClient.GetAllJoinedRooms(new Empty());
             await foreach (var chat in chatsGlobal.ResponseStream.ReadAllAsync())
             {
                 chats.Add(new ChatModel(chat));
@@ -124,7 +121,7 @@ public partial class DashboardViewModel : ViewModelBase
                     RequestChangeInitialVector = ChangeIvCommand
                 });
                 
-                _chatSessionContexts[chat.ChatId] = new ChatSessionContext(chat.ChatId, client, chat.GetRoomData());
+                _chatSessionContexts[chat.ChatId] = new ChatSessionContext(chat.ChatId, chat.GetRoomData());
                 InitChatSessionContext(_chatSessionContexts[chat.ChatId]);
                 
                 _allMessages[chat.ChatId] = new ObservableCollection<ChatMessageModel>(allMessages[chat.ChatId]);
@@ -146,7 +143,7 @@ public partial class DashboardViewModel : ViewModelBase
                 {
                     List<ChatModel> chats = new List<ChatModel>();
 
-                    using var chatsGlobal = client.GetAllJoinedRooms(new Empty());
+                    using var chatsGlobal = ServerApiClient.Instance.GrpcClient.GetAllJoinedRooms(new Empty());
                     await foreach (var chat in chatsGlobal.ResponseStream.ReadAllAsync(cancellationToken: token))
                     {
                         chats.Add(new ChatModel(chat));
@@ -176,7 +173,7 @@ public partial class DashboardViewModel : ViewModelBase
                                     RequestChangeInitialVector = ChangeIvCommand
                                 });
                                 _chatSessionContexts[chat.ChatId] =
-                                    new ChatSessionContext(chat.ChatId, client, chat.GetRoomData());
+                                    new ChatSessionContext(chat.ChatId,chat.GetRoomData());
                                 InitChatSessionContext(_chatSessionContexts[chat.ChatId]);
 
                                 using var repo = new ChatRepository();
@@ -342,7 +339,7 @@ public partial class DashboardViewModel : ViewModelBase
                 Padding = result.SelectedPaddingMode,
             };
             
-            room = await client.CreateRoomAsync(roomData);
+            room = await ServerApiClient.Instance.GrpcClient.CreateRoomAsync(roomData);
         }
         catch (Exception ex)
         {
@@ -370,7 +367,7 @@ public partial class DashboardViewModel : ViewModelBase
             RequestChangeInitialVector = ChangeIvCommand
         };
         
-        _chatSessionContexts[room.ChatId] = new ChatSessionContext(room.ChatId, client, roomData);
+        _chatSessionContexts[room.ChatId] = new ChatSessionContext(room.ChatId, roomData);
         InitChatSessionContext(_chatSessionContexts[room.ChatId]);
 
         ChatList.Add(newChat);
@@ -393,30 +390,32 @@ public partial class DashboardViewModel : ViewModelBase
         _toast.ShowSuccessMessageToast("Чат успешно создан");
     }
 
+    
     private void InitChatSessionContext(ChatSessionContext ctx)
     {
         ctx.OnMessageReceived += MessageReceived;
         ctx.OnMessageError += (id, error) => _toast.ShowErrorMessageToast($"Ошибка {error}, в чате {id}");
         ctx.OnSubscriptionStarted +=(id) => _toast.ShowSuccessMessageToast($"Начался обмен сообщениями в чате {id}");
 
-        ctx.OnIvSet += (id) => _toast.ShowSuccessMessageToast($"Установлен новый IV для чата {id}");
+        ctx.OnIvChanged += (id) => _toast.ShowSuccessMessageToast($"Установлен новый IV для чата {id}");
         
-
+        ctx.OnFileUploadError += (message) =>  _toast.ShowErrorMessageToast(message);
+        
         ctx.OnFileReceived += async (message, model) =>
         {
             CancellationTokenSource cts = new CancellationTokenSource();
             var (notification, bar) = _toast.ShowDownloadEncryptProgress("Загрузка и расшифровка...", () => { cts.Cancel(); });
             try
             {
-                await FileReceived(message, model, bar, cts.Token);
+                await FileReceived(message, model, bar, notification, cts.Token);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Exception inside OnFileReceived");
+                _toast.DismissMessage(notification);
             }
             finally
             {
-                _toast.DismissMessage(notification);
                 cts.Dispose();
             }
         };
@@ -446,8 +445,6 @@ public partial class DashboardViewModel : ViewModelBase
         
         ctx.SessionStarter.OnDhError +=(id, error) => 
             _toast.ShowSuccessMessageToast($"Ошибка обмена '{error}' параметрами ДХ в чате {id}");
-        
-        
     }
     
     
@@ -486,7 +483,7 @@ public partial class DashboardViewModel : ViewModelBase
 
         try
         {
-            var room = await client.JoinRoomAsync(new RoomPassKey()
+            var room = await ServerApiClient.Instance.GrpcClient.JoinRoomAsync(new RoomPassKey()
             {
                 ChatId = chatIdToJoin,
             });
@@ -521,7 +518,7 @@ public partial class DashboardViewModel : ViewModelBase
                 _allMessages[newJoinedChat.Id] = new ObservableCollection<ChatMessageModel>();
             }
 
-            _chatSessionContexts[room.ChatId] = new ChatSessionContext(client, room);
+            _chatSessionContexts[room.ChatId] = new ChatSessionContext(room);
             InitChatSessionContext(_chatSessionContexts[room.ChatId]);
             SelectedChat = newJoinedChat;
             
@@ -563,34 +560,39 @@ public partial class DashboardViewModel : ViewModelBase
         chat.LastMessageTime = message.Timestamp;
         Task.Run(() => AddMessageToBd(message));
     }
-    
-    private async Task FileReceived(Message response, ChatMessageModel message, ProgressBar progress, CancellationToken ct)
+
+    private async Task FileReceived(Message response, ChatMessageModel message, ProgressBar progress,
+        INotificationMessage notification, CancellationToken ct)
     {
         Log.Debug("FileReceived: получаем файл");
         var chatMessages = _allMessages[response.ChatId];
         var chat = ChatList.First(c => c.Id == response.ChatId);
         string savePath = Path.Combine(Config.Instance.TempPath, message.Content);
-        
-        
-        var status = await _chatSessionContexts[response.ChatId].DownloadAndDecryptFile(
-            new FileRequest()
+
+        _ = Task.Run(async () =>
+        {
+            var status = await _chatSessionContexts[response.ChatId].DownloadAndDecryptFile(
+                new FileRequest()
+                {
+                    ChatId = response.ChatId,
+                    FileName = response.Data
+                }, savePath, progress, ct);
+
+            if (!status) return;
+            _ = Task.Run(() => AddMessageToBd(message), ct);
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                ChatId = response.ChatId,
-                FileName = response.Data
-            }, savePath, progress, ct);
-
-        if (!status) return;
-        
-        _ = Task.Run(() => AddMessageToBd(message), ct);
-        
-        message.Content = savePath;
-        message.Filename = message.Content;
-        chat.LastMessage = "Получен Файл";
-        chat.LastMessageTime = message.Timestamp;
-        
-        chatMessages.Add(message);
+                _toast.DismissMessage(notification);
+                message.Content = savePath;
+                message.Filename = message.Content;
+                chat.LastMessage = "Получен Файл";
+                chat.LastMessageTime = message.Timestamp;
+                chatMessages.Add(message);
+            });
+        }, ct);
     }
-
+    
 
     private void AddMessageToBd(ChatMessageModel message)
     {
@@ -631,32 +633,41 @@ public partial class DashboardViewModel : ViewModelBase
             AllowMultiple = false,
             FileTypeFilter = new List<FilePickerFileType>
             {
-                new ("Изображения")
-                {
-                    Patterns =  ImageExtensions.Select(ext => $"*{ext}").ToArray()
-                },
-                new ("Все файлы")
-                {
-                    Patterns = ["*"]
-                }
+                FilePickerFileTypes.All,
+                FilePickerFileTypes.ImageAll,
             }
         });
 
         if (files is { Count: > 0 })
         {
             var file = files[0];
-            var path = file.Path.AbsolutePath;
+            //var path = file.Path.AbsolutePath;
+            string? path = file.TryGetLocalPath();
             Log.Information("Пользователь выбрал файл: {0}", path);
 
             var ext = Path.GetExtension(path)?.ToLowerInvariant() ?? "";
             var isImage = ImageExtensions.Contains(ext);
             
             MessageType type  = isImage ? MessageType.Image : MessageType.File;
+            
             CancellationTokenSource cts = new();
-            var (notification, bar) = _toast.ShowDownloadEncryptProgress("Загрузка и зашифровка ...", () => cts.Cancel());
-            await _chatSessionContexts[SelectedChat.Id].UploadAndEncryptFile(path,file.Name, type, bar, cts.Token);
-            _toast.DismissMessage(notification);
-            cts.Dispose();
+                
+            var (notification, bar) =
+                _toast.ShowDownloadEncryptProgress("Загрузка и зашифровка ...", () => cts.Cancel());
+
+            _ = Task.Run(async () =>
+            {
+               
+                await _chatSessionContexts[SelectedChat.Id]
+                    .UploadAndEncryptFile(path!, file.Name, type, bar, cts.Token);
+                
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    _toast.DismissMessage(notification);
+                    cts.Dispose();
+                });
+            }, cts.Token);
+            
         }
 
     }
@@ -679,7 +690,7 @@ public partial class DashboardViewModel : ViewModelBase
                 Log.Debug("DashboardViewModel: Удален выбранный чат, выбран новый: {0}", SelectedChat?.Id ?? "Нет");
             }
 
-            client.CloseRoomAsync(new RoomPassKey()
+            ServerApiClient.Instance.GrpcClient.CloseRoomAsync(new RoomPassKey()
             {
                 ChatId = chatToDelete.Id,
             });
@@ -705,7 +716,7 @@ public partial class DashboardViewModel : ViewModelBase
             Log.Information("DashboardViewModel: Запрос на удаление пользователя из чата '{0}' (ID: {1})",
                 chatContext.Id, chatContext.Id);
 
-            await client.KickFromRoomAsync(new RoomPassKey()
+            await ServerApiClient.Instance.GrpcClient.KickFromRoomAsync(new RoomPassKey()
             {
                 ChatId = chatContext.Id,
             });

@@ -33,36 +33,33 @@ public sealed class ChatSessionContext : IDisposable
     
     public event Action<string>? OnSubscriptionStarted;
     public event Action<string>? OnSubscriptionStopped;
+    public event Action<string>? OnIvChanged;
     public event Action<string>? OnFileUploadError;
-    public event Action<string>? OnIvSet;
 
 
-    private readonly HackingGate.HackingGateClient _grpcClient;
     private readonly ChatSessionStarter _auth;
     public ChatSessionStarter SessionStarter => _auth;
 
-    private readonly EncryptingManager _encryptingManager; // apply it
+    private readonly EncryptingManager _encryptingManager;
 
     
-    public ChatSessionContext(string chatId, HackingGate.HackingGateClient grpcClient, RoomData roomData) :
-        this(grpcClient, chatId, new EncryptingManager(roomData, null),
-            new ChatSessionStarter(chatId, grpcClient))
+    public ChatSessionContext(string chatId, RoomData roomData) :
+        this(chatId, new EncryptingManager(roomData, null), new ChatSessionStarter(chatId))
     {
         
     }
     
-    public ChatSessionContext(HackingGate.HackingGateClient grpcClient, RoomInfo roomInfo) :
-        this(grpcClient, roomInfo.ChatId, new EncryptingManager(roomInfo.Settings, null),
-            new ChatSessionStarter(roomInfo.ChatId, grpcClient))
+    public ChatSessionContext(RoomInfo roomInfo) :
+        this(roomInfo.ChatId, new EncryptingManager(roomInfo.Settings, null),
+            new ChatSessionStarter(roomInfo.ChatId))
     {
         
     }
 
 
-    public ChatSessionContext(HackingGate.HackingGateClient grpcClient, string chatId, EncryptingManager encryptingManager, ChatSessionStarter auth)
+    public ChatSessionContext(string chatId, EncryptingManager encryptingManager, ChatSessionStarter auth)
     {
         ChatId = chatId;
-        _grpcClient = grpcClient ?? throw new ArgumentNullException(nameof(grpcClient));
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
         _encryptingManager = encryptingManager ?? throw new ArgumentNullException(nameof(encryptingManager));
         
@@ -116,7 +113,9 @@ public sealed class ChatSessionContext : IDisposable
         try
         {
             var request = new RoomPassKey { ChatId = this.ChatId };
-            using var call = _grpcClient.ReceiveMessages(request, cancellationToken: ct);
+            using var instance = ServerApiClient.Instance;
+
+            using var call = instance.GrpcClient.ReceiveMessages(request, cancellationToken: ct);
 
             await foreach (var message in call.ResponseStream.ReadAllAsync(ct))
             {
@@ -131,6 +130,7 @@ public sealed class ChatSessionContext : IDisposable
                 if (message.Type == MessageType.NewIv)
                 {
                     _encryptingManager.SetIv(message.Data.ToByteArray());
+                    await Dispatcher.UIThread.InvokeAsync(() => OnIvChanged?.Invoke(ChatId));
                     Log.Debug("Setting up new IV");
                     continue;
                 }
@@ -216,7 +216,9 @@ public sealed class ChatSessionContext : IDisposable
         try
         {
             byte[] iv = _encryptingManager.GenerateNewIv();
-            await _grpcClient.SendMessageAsync(new Message()
+            using var instance = ServerApiClient.Instance;
+
+            await instance.GrpcClient.SendMessageAsync(new Message()
             {
                 ChatId = this.ChatId,
                 Data = ByteString.CopyFrom(iv),
@@ -225,7 +227,7 @@ public sealed class ChatSessionContext : IDisposable
                 FromUsername = Auth.Instance.AuthenticatedUsername!
             });
             Log.Debug("Sent new iv: {0}, to chat {1}", iv, ChatId);
-            OnIvSet?.Invoke(ChatId);
+            OnIvChanged?.Invoke(ChatId);
         }
         catch (Exception ex)
         {
@@ -248,8 +250,9 @@ public sealed class ChatSessionContext : IDisposable
         try
         {
             var content = await Task.Run(() => Encoding.UTF8.GetBytes(message.Content));
+            using var instance = ServerApiClient.Instance;
 
-            await _grpcClient.SendMessageAsync(new Message()
+            await instance.GrpcClient.SendMessageAsync(new Message()
             {
                 ChatId = this.ChatId,
                 Data = ByteString.CopyFrom(await _encryptingManager.EncryptMessage(content)),
@@ -286,18 +289,19 @@ public sealed class ChatSessionContext : IDisposable
             var result = await file.ReadNextFragmentAsync(ct);
             if (result == null)
             {
-                OnFileUploadError?.Invoke("Неподдерживаемый для отправки формат или нет доступа к файлу");
+                await Dispatcher.UIThread.InvokeAsync(() => OnFileUploadError?.Invoke("Неподдерживаемый для отправки формат или нет доступа к файлу"));
                 Log.Warning("Неподдерживаемый для отправки формат (not is FILE)");
 
                 return;
             }
-            using var call = _grpcClient.SendFile(cancellationToken: ct);
+            using var instance = ServerApiClient.Instance;
+            using var call = instance.GrpcClient.SendFile(cancellationToken: ct);
             
             var encryptedFilename =
                 ByteString.CopyFrom(
                     await _encryptingManager.EncryptMessage(ByteString.CopyFromUtf8(filename).ToByteArray(), ct));
             
-            progress.Maximum = size;
+            await Dispatcher.UIThread.InvokeAsync(() => progress.Maximum = size);
             var encoder = _encryptingManager.BuildEncoder();
             while (result is not null)
             {
@@ -305,7 +309,7 @@ public sealed class ChatSessionContext : IDisposable
                 long offset = result.Value.Offset;
 
                 data = await EncryptingManager.EncryptMessageManual(encoder, data, ct);
-                progress.Value += data.Length;
+                await Dispatcher.UIThread.InvokeAsync(() => progress.Value += data.Length);
 
                 await call.RequestStream.WriteAsync(new FileChunk()
                 {
@@ -324,29 +328,32 @@ public sealed class ChatSessionContext : IDisposable
             
             if (ack.Ok)
             {
-                OnMessageReceived?.Invoke(ChatId, 
+                await Dispatcher.UIThread.InvokeAsync(() => OnMessageReceived?.Invoke(ChatId, 
                     new ChatMessageModel(ChatId,
                         Auth.Instance.AuthenticatedUsername!,
                         loadPath,
                         DateTime.Now,
                         true,
                         type,
-                        filename));
+                        filename)));
                 Log.Debug("Закончили отправку и шифрование файла {0}", filename);
             }
             else
             {
                 Log.Warning("На сервере возникла ошибка {0}", ack.Error);
-
+                await Dispatcher.UIThread.InvokeAsync(() => OnFileUploadError?.Invoke("Передача была прервана с другой стороны"));
             }
         }
         catch (RpcException ex)
         {
             Log.Error(ex, "Rpc exception during upload file");
+            await Dispatcher.UIThread.InvokeAsync(() => OnFileUploadError?.Invoke("Передача была прервана по вине сервера"));
+
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Unknown exception during upload file");
+            await Dispatcher.UIThread.InvokeAsync(() => OnFileUploadError?.Invoke("Возникла ошибка при шифровании или чтении файла"));
         }
     }
 
@@ -357,15 +364,16 @@ public sealed class ChatSessionContext : IDisposable
         {
             Log.Debug("Начали скачивание и дешифрование файла {0}", request.FileName);
             using EncryptedFileModel file = new EncryptedFileModel(savePath);
-            using var call = _grpcClient.ReceiveFile(request, cancellationToken: ct);
+            using var instance = ServerApiClient.Instance;
+            using var call = instance.GrpcClient.ReceiveFile(request, cancellationToken: ct);
 
             var encoder = _encryptingManager.BuildEncoder();
             await foreach (var chunk in call.ResponseStream.ReadAllAsync(ct))
             {
-                progress.Maximum = chunk.Meta;
+                await Dispatcher.UIThread.InvokeAsync(() => progress.Maximum = chunk.Meta);
                 byte[] data = await EncryptingManager.DecryptMessageManual(encoder, chunk.Data.ToByteArray(), ct);
                 await file.AppendFragmentAtOffsetAsync(chunk.Offset, data, ct);
-                progress.Value += chunk.Data.Length;
+                await Dispatcher.UIThread.InvokeAsync(() => progress.Value += chunk.Data.Length);
             }
 
             Log.Debug("Закончили скачивание и дешифрование файла {0}", request.FileName);

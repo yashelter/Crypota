@@ -2,6 +2,7 @@
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using AvaloniaClient.Services;
 using Google.Protobuf;
 using Grpc.Core;
 using Serilog;
@@ -26,22 +27,20 @@ public class ChatSessionStarter
     
     public event Action<string, string>? OnDhError; 
     public event Action<string>? OnDhCompleted;
+    
 
-    private readonly HackingGate.HackingGateClient _grpcClient;
-
-
-    public ChatSessionStarter(string chatId, HackingGate.HackingGateClient grpcClient)
+    public ChatSessionStarter(string chatId)
     {
         ChatId = chatId;
-        _grpcClient = grpcClient ?? throw new ArgumentNullException(nameof(grpcClient));
-       
         Log.Debug("ChatSessionContext создан для ChatId: {0}", ChatId);
     }
 
     private async Task InitPublicConstants(CancellationToken ct)
     {
         Log.Debug("Запрос параметров Диффи-Хеллмана (g, p) для чата {0}", ChatId);
-        DiffieHellmanData dhConstants = await _grpcClient.GetPublicDhParametersAsync(
+        using var instance = ServerApiClient.Instance;
+
+        DiffieHellmanData dhConstants = await instance.GrpcClient.GetPublicDhParametersAsync(
             new DiffieHellmanQuery { ChatId = this.ChatId }, cancellationToken: ct);
         
         _gValue = dhConstants.GValue.ToByteArray();
@@ -126,10 +125,11 @@ public class ChatSessionStarter
 
         Log.Information("Начинаем streaaaaming для обмена DH ключами для чата {0}", ChatId);
         
-        using var call = _grpcClient.ExchangeDhParameters(exchangeRequest, cancellationToken: ct);
-
         try
         {
+            using var instance = ServerApiClient.Instance;
+            using var call = instance.GrpcClient.ExchangeDhParameters(exchangeRequest, cancellationToken: ct);
+
             await foreach (var mateData in call.ResponseStream.ReadAllAsync(ct))
             {
                 Log.Debug("Получена публичная часть DH от собеседника для чата {0}", ChatId);
