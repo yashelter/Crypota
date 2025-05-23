@@ -103,7 +103,7 @@ public static class Protocol
     public static BigInteger GenerateSecret(int bitlen = Bitlen)
     {
         KeyGenForDh gen = new KeyGenForDh(RsaService.PrimaryTestOption.MillerRabinTest, probability, bitlen);
-        return gen.GeneratePrimeAsync().Result;
+        return gen.GenerateCandidate();
     }
 
     public static BigInteger GetBigIntegerFromArray(byte[] array)

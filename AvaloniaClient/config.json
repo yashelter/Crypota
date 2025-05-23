@@ -1,5 +1,5 @@
 ﻿{
-  "ServerAddress" : "http://localhost:8080",
+  "ServerAddress" : "http://83.220.170.183:8080",
   "AppDataBase": "../app.db",
   "TempPath": "Temp/"
 }

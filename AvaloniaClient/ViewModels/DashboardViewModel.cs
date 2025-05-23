@@ -416,6 +416,7 @@ public partial class DashboardViewModel : ViewModelBase
             }
             finally
             {
+                _toast.DismissMessage(notification);
                 cts.Dispose();
             }
         };

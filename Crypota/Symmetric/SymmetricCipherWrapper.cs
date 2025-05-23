@@ -29,6 +29,11 @@ public class SymmetricCipherWrapper : ISymmetricCipher
             return _blockSize;
         }
         
+        public int? GetKeySize()
+        {
+            return _keySize;
+        }
+        
         public SymmetricCipherWrapperBuilder WithBlockSize(int? size)
         {
             if (size == null) return this;
