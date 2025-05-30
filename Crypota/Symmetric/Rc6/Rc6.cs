@@ -19,7 +19,7 @@ public class Rc6 : ISymmetricCipher
             if (_key.Length != 16 && _key.Length != 24 && _key.Length != 32)
                 throw new InvalidKeyException("Key length must be 128, 192 or 256 bits.");
 
-            var expander = new Rc6KeyExpansion();
+            var expander = new Rc6KeyExtension();
             _S = expander.GenerateRoundKeys(_key);
         }
     }

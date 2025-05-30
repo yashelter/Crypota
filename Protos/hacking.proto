@@ -49,6 +49,8 @@ service HackingGate {
 enum EncryptAlgo {
   TWOFISH = 0;
   RC6     = 1;
+  SERPENT = 2;
+  LOKI97  = 3;
 }
 
 enum EncryptMode {

@@ -52,7 +52,7 @@ public partial class App : Application
         }
     }
 
-    public override async void OnFrameworkInitializationCompleted() // Сделаем метод async void
+    public override async void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

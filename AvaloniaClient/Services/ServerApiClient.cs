@@ -152,7 +152,6 @@ public sealed class ServerApiClient : IDisposable
         Dispose(false);
     }
 
-    // AuthInterceptor остается без изменений, но можно добавить логику вызова ReportConnectionIssue при определенных RpcException
     private sealed class AuthInterceptor : Interceptor 
     {
         private readonly Func<string?> _getToken;
@@ -168,7 +167,7 @@ public sealed class ServerApiClient : IDisposable
                 if (task.Exception != null)
                 {
                     if (task.Exception.GetBaseException() is RpcException rpcEx &&
-                        (rpcEx.StatusCode == StatusCode.Unavailable || rpcEx.StatusCode == StatusCode.Internal)) // и другие критичные статусы
+                        (rpcEx.StatusCode == StatusCode.Unavailable || rpcEx.StatusCode == StatusCode.Internal))
                     {
                         ServerApiClient.Instance.ReportConnectionIssue();
                     }

@@ -2,7 +2,7 @@
 
 using System;
 
-public class Rc6KeyExpansion: ICloneable
+public class Rc6KeyExtension: ICloneable
 {
     private const int W = 32;
     private const uint P = 0xB7E15163;
@@ -10,7 +10,7 @@ public class Rc6KeyExpansion: ICloneable
     
     private readonly int _rounds;
 
-    public Rc6KeyExpansion(int rounds = 20)
+    public Rc6KeyExtension(int rounds = 20)
     {
         _rounds = rounds;
     }
@@ -58,6 +58,6 @@ public class Rc6KeyExpansion: ICloneable
 
     public object Clone()
     {
-        return new Rc6KeyExpansion(_rounds);
+        return new Rc6KeyExtension(_rounds);
     }
 }
