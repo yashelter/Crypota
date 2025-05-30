@@ -5,7 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Crypota.Interfaces;
 using Crypota.Symmetric;
+using Crypota.Symmetric.Loki97;
 using Crypota.Symmetric.Rc6;
+using Crypota.Symmetric.Serpent;
 using Crypota.Symmetric.Twofish;
 using Serilog;
 using StainsGate;
@@ -46,6 +48,10 @@ public class EncryptingManager
                     BlockSizeBits = blockSize,
                     KeySizeBits = keySize
                 };
+            case EncryptAlgo.Loki97:
+                return new Loki97();
+            case EncryptAlgo.Serpent:
+                return new Serpent();
             default:
                 throw new NotSupportedException("Unknown algo");
         }

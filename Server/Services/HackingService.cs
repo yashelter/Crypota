@@ -78,8 +78,8 @@ public class ChatSession
     public List<Subscriber> MessageSubscribers { get; } = new (2);
     
     public ConcurrentDictionary<string, PendingFileTransfer> FileTransfers { get; } = new();
-
     public readonly CancellationTokenSource SessionCts = new CancellationTokenSource();
+
 }
 
 public sealed class SessionStore
